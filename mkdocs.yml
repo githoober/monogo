@@ -1,0 +1,15 @@
+site_name: Monogo
+site_description: Flexible, channel-based structured logger for Go inspired by PHP Monolog.
+theme:
+  name: material
+
+nav:
+  - Home: index.md
+  - Architecture: architecture.md
+  - Comparison & Go Idioms: comparison.md
+  - Glossary: glossary.md
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition

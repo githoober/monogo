@@ -1,0 +1,72 @@
+# Architectural Decisions: Monogo
+
+This document outlines the primary architectural decisions behind **Monogo** (`github.com/githoober/monogo`), a Go port of PHP Monolog.
+
+## 1. Generic, Decoupled Core Architecture
+
+### Decision
+The core `monolog` package is strictly backend-agnostic. It defines generic interfaces (`Handler`, `Processor`, `Formatter`) and data structures (`Record`, `Level`) without hard dependencies on any external logging library or Go standard library adapters.
+
+### Rationale
+In PHP Monolog, handlers dictate how log records are handled and emitted. In Go, applications use various backends (`log/slog`, `zerolog`, `zap`, etc.). Decoupling the core allows Monogo to serve as a universal logging facade and pipeline, enabling log records to be formatted and dispatched to any backend seamlessly.
+
+---
+
+## 2. Pluggable Backend Adapters (`adapter/`)
+
+### Decision
+Framework-specific integrations reside in separate subpackages under `adapter/`:
+- **`adapter/slogadapter`**: Provides `SlogHandler` (sends Monogo records to any `slog.Handler`) and `MonologSlogBridge` (implements `slog.Handler` using Monogo as backend).
+- **`adapter/zerologadapter`**: Provides `ZerologHandler` (routes Monogo records to `zerolog.Logger`).
+
+### Rationale
+Subpackages keep dependencies isolated so consumers importing only core Monogo do not pull in unused third-party dependencies.
+
+---
+
+## 3. Ambient Context Values via `context.Context`
+
+### Decision
+Ambient contextual fields (such as `request_id`, `trace_id`, or `tenant_id`) can be stored in Go's standard `context.Context` using `monolog.WithContext(ctx, fields)` or `monolog.WithField(ctx, key, value)`.
+
+When context-aware log methods are invoked (e.g. `logger.InfoContext(ctx, ...)`), ambient fields are automatically extracted via `monolog.FromContext(ctx)` and merged into the log `Record.Context`.
+
+### Rationale
+In Go, `context.Context` is the standard mechanism for passing request-scoped values across API boundaries and goroutines. Decoupling request-scoped ambient fields from the `Logger` instance avoids needing to recreate logger objects on every request while ensuring log entries automatically carry request metadata.
+
+---
+
+## 4. Child Loggers & Channels
+
+### Decision
+Monogo supports two types of child logger creation:
+1. **Contextual Child Loggers (`logger.With(map[string]interface{})`)**: Creates a new `*Logger` instance that prepends a custom processor to automatically attach fixed fields to every record.
+2. **Channel Child Loggers (`logger.WithName(name)` / `logger.WithChannel(name)`)**: Creates a new `*Logger` instance that inherits the parent's handler stack and processors while overriding the channel name.
+
+### Rationale
+This matches Monolog's channel-centric logging model (e.g., separating `app`, `auth`, `database` logs) while providing a familiar API for attaching component-level metadata.
+
+---
+
+## 5. RFC 5424 Log Level System
+
+### Decision
+Monogo implements RFC 5424 log levels (`DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`) as an integer-backed `Level` type with integer steps of 100.
+
+### Rationale
+This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering while offering conversion helpers to map to Go `log/slog` levels (`DEBUG`, `INFO`, `WARN`, `ERROR`) and `zerolog` levels.
+
+---
+
+## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Filter`, `Group`, `Buffer`)
+
+### Decision
+Log records flow through the classic Monolog pipeline (IsHandling -> Processors -> Handlers -> Formatters).
+Built-in handlers include:
+- **`Stream`**: Writes formatted logs to any `io.Writer`.
+- **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
+- **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
+- **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
+
+### Rationale
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes.

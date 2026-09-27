@@ -1,0 +1,11 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: monogo
+  namespace: go
+  title: Monogo
+  description: Structured logger in Go inspired by PHP Monolog with support for slog, zerolog, ambient context, and handlers.
+spec:
+  type: library
+  lifecycle: production
+  owner: developers
