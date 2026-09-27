@@ -92,11 +92,6 @@ func (n *Null) Handle(record monogo.Record) error {
 	return nil
 }
 
-// HandleBatch does nothing.
-func (n *Null) HandleBatch(records []monogo.Record) error {
-	return nil
-}
-
 // Close does nothing.
 func (n *Null) Close() error {
 	return nil

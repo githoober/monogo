@@ -122,16 +122,6 @@ func (s *SlogHandler) Handle(record monogo.Record) error {
 	return s.slogHandler.Handle(context.Background(), r)
 }
 
-// HandleBatch processes a batch of records through slog.
-func (s *SlogHandler) HandleBatch(records []monogo.Record) error {
-	for _, rec := range records {
-		if err := s.Handle(rec); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *SlogHandler) Close() error {
 	return nil
 }

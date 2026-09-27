@@ -206,28 +206,24 @@ func TestSlogHandlerCustomLevels(t *testing.T) {
 	}
 }
 
-func TestSlogHandlerHandleBatch(t *testing.T) {
+func TestSlogHandlerWithBufferFallback(t *testing.T) {
 	var buf bytes.Buffer
 	slogH := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
 	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG)
+	bufH := handler.NewBuffer(monoH, 2, monogo.ERROR)
 
-	records := []monogo.Record{
-		{Message: "batch item 1", Level: monogo.INFO, Channel: "batch-chan"},
-		{Message: "batch item 2", Level: monogo.ERROR, Channel: "batch-chan"},
-	}
-
-	if err := monoH.HandleBatch(records); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	_ = bufH.Handle(monogo.Record{Message: "buffered 1", Level: monogo.INFO})
+	_ = bufH.Handle(monogo.Record{Message: "buffered 2", Level: monogo.INFO})
 
 	out := buf.String()
-	if !strings.Contains(out, `msg="batch item 1"`) {
-		t.Errorf("expected item 1 in output, got: %s", out)
+	if !strings.Contains(out, `msg="buffered 1"`) {
+		t.Errorf("expected buffered 1 in output, got: %s", out)
 	}
-	if !strings.Contains(out, `msg="batch item 2"`) {
-		t.Errorf("expected item 2 in output, got: %s", out)
+	if !strings.Contains(out, `msg="buffered 2"`) {
+		t.Errorf("expected buffered 2 in output, got: %s", out)
 	}
 }
+
 
 
 

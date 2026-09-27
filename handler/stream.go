@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"io"
 	"sync"
 
@@ -66,12 +67,26 @@ func (s *Stream) HandleBatch(records []monogo.Record) error {
 		f = formatter.NewLine("", "")
 	}
 
-	bytes, err := f.FormatBatch(handled)
-	if err != nil {
-		return err
+	var payload []byte
+	if bf, ok := f.(monogo.BatchFormatter); ok {
+		var err error
+		payload, err = bf.FormatBatch(handled)
+		if err != nil {
+			return err
+		}
+	} else {
+		var buf bytes.Buffer
+		for _, rec := range handled {
+			b, err := f.Format(rec)
+			if err != nil {
+				return err
+			}
+			buf.Write(b)
+		}
+		payload = buf.Bytes()
 	}
 
-	_, err = s.writer.Write(bytes)
+	_, err := s.writer.Write(payload)
 	return err
 }
 

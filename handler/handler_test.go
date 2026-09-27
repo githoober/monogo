@@ -393,4 +393,41 @@ func TestGroupHandlerHandleBatch(t *testing.T) {
 	}
 }
 
+type nonBatchMockHandler struct {
+	minLevel    monogo.Level
+	records     []monogo.Record
+	handleCalls int
+}
+
+func (n *nonBatchMockHandler) IsHandling(level monogo.Level) bool {
+	return level >= n.minLevel
+}
+
+func (n *nonBatchMockHandler) Handle(record monogo.Record) error {
+	n.handleCalls++
+	n.records = append(n.records, record)
+	return nil
+}
+
+func (n *nonBatchMockHandler) Close() error {
+	return nil
+}
+
+func TestBufferFallbackForNonBatchHandler(t *testing.T) {
+	inner := &nonBatchMockHandler{minLevel: monogo.DEBUG}
+	bufH := handler.NewBuffer(inner, 3, monogo.ERROR)
+
+	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
+	_ = bufH.Handle(monogo.Record{Message: "msg 3", Level: monogo.INFO}) // flushes due to limit 3
+
+	if inner.handleCalls != 3 {
+		t.Errorf("expected 3 fallback Handle calls, got %d", inner.handleCalls)
+	}
+	if len(inner.records) != 3 {
+		t.Errorf("expected 3 records, got %d", len(inner.records))
+	}
+}
+
+
 

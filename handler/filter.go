@@ -57,7 +57,9 @@ func (f *Filter) Handle(record monogo.Record) error {
 	return f.handler.Handle(record)
 }
 
-// HandleBatch filters records and forwards matching records to the wrapped handler's HandleBatch.
+// HandleBatch filters records and forwards matching records to the wrapped handler.
+// If the wrapped handler implements monogo.BatchHandler, it calls HandleBatch;
+// otherwise, it falls back to calling Handle for each matching record.
 func (f *Filter) HandleBatch(records []monogo.Record) error {
 	filtered := make([]monogo.Record, 0, len(records))
 	for _, rec := range records {
@@ -74,7 +76,18 @@ func (f *Filter) HandleBatch(records []monogo.Record) error {
 	if len(filtered) == 0 {
 		return nil
 	}
-	return f.handler.HandleBatch(filtered)
+
+	if bh, ok := f.handler.(monogo.BatchHandler); ok {
+		return bh.HandleBatch(filtered)
+	}
+
+	var lastErr error
+	for _, rec := range filtered {
+		if err := f.handler.Handle(rec); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // Close closes wrapped handler.

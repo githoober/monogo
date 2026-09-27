@@ -23,15 +23,6 @@ func (m *mockHandler) Handle(record monogo.Record) error {
 	return nil
 }
 
-func (m *mockHandler) HandleBatch(records []monogo.Record) error {
-	for _, rec := range records {
-		if m.IsHandling(rec.Level) {
-			m.records = append(m.records, rec)
-		}
-	}
-	return nil
-}
-
 func (m *mockHandler) Close() error {
 	m.closed = true
 	return nil

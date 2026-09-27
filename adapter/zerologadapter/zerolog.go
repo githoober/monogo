@@ -87,16 +87,6 @@ func (z *ZerologHandler) Handle(record monogo.Record) error {
 	return nil
 }
 
-// HandleBatch processes a batch of records through zerolog.
-func (z *ZerologHandler) HandleBatch(records []monogo.Record) error {
-	for _, rec := range records {
-		if err := z.Handle(rec); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (z *ZerologHandler) Close() error {
 	return nil
 }

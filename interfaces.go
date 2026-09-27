@@ -1,11 +1,17 @@
 package monogo
 
-// Handler handles log records (e.g. writing to file, console, service, or forwarding to another handler).
+// Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
 	IsHandling(level Level) bool
 	Handle(record Record) error
-	HandleBatch(records []Record) error
 	Close() error
+}
+
+// BatchHandler is an optional interface for handlers capable of processing a batch of records
+// in a single atomic or optimized operation.
+type BatchHandler interface {
+	Handler
+	HandleBatch(records []Record) error
 }
 
 // Bubbler allows a handler to control whether a record bubbles down through the handler stack.
@@ -27,8 +33,14 @@ func (f ProcessorFunc) Process(record Record) Record {
 	return f(record)
 }
 
-// Formatter formats a Record or slice of Records into bytes or string representation.
+// Formatter formats a Record into bytes or string representation.
 type Formatter interface {
 	Format(record Record) ([]byte, error)
+}
+
+// BatchFormatter is an optional interface for formatters capable of formatting multiple
+// records together (e.g. into a continuous buffer or a JSON array).
+type BatchFormatter interface {
+	Formatter
 	FormatBatch(records []Record) ([]byte, error)
 }

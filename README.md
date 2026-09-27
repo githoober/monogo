@@ -133,7 +133,7 @@ logger.Error("Critical error")  // errHandler handles and suppresses bubbling; o
 
 ## Batch Processing & Buffering
 
-Buffering handlers accumulate log entries and flush them as an atomic batch using `HandleBatch` and `FormatBatch`:
+Buffering handlers accumulate log entries and flush them via `monogo.BatchHandler` and `monogo.BatchFormatter`. Handlers that support optimized batch emission receive batches directly via `HandleBatch`, while standard handlers gracefully receive records via `Handle` without requiring iteration boilerplate:
 
 ### 1. `Buffer` Handler
 Buffers entries until a capacity limit is reached or a flush level is triggered:
