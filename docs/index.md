@@ -10,9 +10,11 @@ Welcome to the documentation for **Monogo** (`github.com/githoober/monogo`), a f
 
 ## Quick Overview
 
-Monogo is backend-agnostic and provides a classic Monolog logging pipeline:
+Monogo is backend-agnostic and provides a classic Monolog logging pipeline supporting both single-record and batch handling:
 
-Record -> Processors -> Handlers -> Formatter -> Output (Stream, File, Slog, Zerolog)
+```
+Record -> Processors -> Handlers (Handle / HandleBatch) -> Formatter (Format / FormatBatch) -> Output
+```
 
 
 For quick start guides and code examples, refer to the project [README.md](../README.md).
