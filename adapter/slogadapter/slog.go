@@ -8,16 +8,54 @@ import (
 	"github.com/githoober/monogo/handler"
 )
 
+// Custom slog levels corresponding to RFC 5424 / monogo levels not natively defined in log/slog.
+// Slog uses 4-step spacing between standard levels (Debug=-4, Info=0, Warn=4, Error=8),
+// which explicitly supports defining custom intermediate and extended levels.
+const (
+	LevelNotice    slog.Level = slog.LevelInfo + 2  // 2 (between Info and Warn)
+	LevelCritical  slog.Level = slog.LevelError + 4 // 12 (above Error)
+	LevelAlert     slog.Level = slog.LevelError + 8 // 16 (above Critical)
+	LevelEmergency slog.Level = slog.LevelError + 12 // 20 (above Alert)
+)
+
+// ReplaceLevelAttr is a slog ReplaceAttr helper that formats custom RFC 5424 levels
+// (Notice, Critical, Alert, Emergency) as human-readable string values instead of "INFO+2", etc.
+func ReplaceLevelAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.LevelKey {
+		if lvl, ok := a.Value.Any().(slog.Level); ok {
+			switch lvl {
+			case LevelNotice:
+				a.Value = slog.StringValue("NOTICE")
+			case LevelCritical:
+				a.Value = slog.StringValue("CRITICAL")
+			case LevelAlert:
+				a.Value = slog.StringValue("ALERT")
+			case LevelEmergency:
+				a.Value = slog.StringValue("EMERGENCY")
+			}
+		}
+	}
+	return a
+}
+
 func ToSlogLevel(l monogo.Level) slog.Level {
 	switch {
 	case l < monogo.INFO:
 		return slog.LevelDebug
-	case l < monogo.WARNING:
+	case l < monogo.NOTICE:
 		return slog.LevelInfo
+	case l < monogo.WARNING:
+		return LevelNotice
 	case l < monogo.ERROR:
 		return slog.LevelWarn
-	default:
+	case l < monogo.CRITICAL:
 		return slog.LevelError
+	case l < monogo.ALERT:
+		return LevelCritical
+	case l < monogo.EMERGENCY:
+		return LevelAlert
+	default:
+		return LevelEmergency
 	}
 }
 
@@ -25,12 +63,20 @@ func FromSlogLevel(sl slog.Level) monogo.Level {
 	switch {
 	case sl < slog.LevelInfo:
 		return monogo.DEBUG
-	case sl < slog.LevelWarn:
+	case sl < LevelNotice:
 		return monogo.INFO
+	case sl < slog.LevelWarn:
+		return monogo.NOTICE
 	case sl < slog.LevelError:
 		return monogo.WARNING
-	default:
+	case sl < LevelCritical:
 		return monogo.ERROR
+	case sl < LevelAlert:
+		return monogo.CRITICAL
+	case sl < LevelEmergency:
+		return monogo.ALERT
+	default:
+		return monogo.EMERGENCY
 	}
 }
 
@@ -56,6 +102,10 @@ func (s *SlogHandler) Handle(record monogo.Record) error {
 	attrs := make([]slog.Attr, 0, len(record.Context)+len(record.Extra)+1)
 	if record.Channel != "" {
 		attrs = append(attrs, slog.String("channel", record.Channel))
+	}
+
+	if record.Level == monogo.NOTICE || record.Level >= monogo.CRITICAL {
+		attrs = append(attrs, slog.String("severity", record.Level.String()))
 	}
 
 	for k, v := range record.Context {

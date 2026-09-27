@@ -104,3 +104,106 @@ func TestSlogHandlerBubbling(t *testing.T) {
 	}
 }
 
+func TestToSlogLevel(t *testing.T) {
+	tests := []struct {
+		monogoLevel monogo.Level
+		expected    slog.Level
+	}{
+		{monogo.DEBUG, slog.LevelDebug},
+		{monogo.INFO, slog.LevelInfo},
+		{monogo.NOTICE, slogadapter.LevelNotice},
+		{monogo.WARNING, slog.LevelWarn},
+		{monogo.ERROR, slog.LevelError},
+		{monogo.CRITICAL, slogadapter.LevelCritical},
+		{monogo.ALERT, slogadapter.LevelAlert},
+		{monogo.EMERGENCY, slogadapter.LevelEmergency},
+	}
+
+	for _, tt := range tests {
+		actual := slogadapter.ToSlogLevel(tt.monogoLevel)
+		if actual != tt.expected {
+			t.Errorf("ToSlogLevel(%v) = %v; want %v", tt.monogoLevel, actual, tt.expected)
+		}
+	}
+}
+
+func TestFromSlogLevel(t *testing.T) {
+	tests := []struct {
+		slogLevel slog.Level
+		expected  monogo.Level
+	}{
+		{slog.LevelDebug, monogo.DEBUG},
+		{slog.LevelInfo, monogo.INFO},
+		{slogadapter.LevelNotice, monogo.NOTICE},
+		{slog.LevelWarn, monogo.WARNING},
+		{slog.LevelError, monogo.ERROR},
+		{slogadapter.LevelCritical, monogo.CRITICAL},
+		{slogadapter.LevelAlert, monogo.ALERT},
+		{slogadapter.LevelEmergency, monogo.EMERGENCY},
+	}
+
+	for _, tt := range tests {
+		actual := slogadapter.FromSlogLevel(tt.slogLevel)
+		if actual != tt.expected {
+			t.Errorf("FromSlogLevel(%v) = %v; want %v", tt.slogLevel, actual, tt.expected)
+		}
+	}
+}
+
+func TestReplaceLevelAttr(t *testing.T) {
+	tests := []struct {
+		level    slog.Level
+		expected string
+	}{
+		{slogadapter.LevelNotice, "NOTICE"},
+		{slogadapter.LevelCritical, "CRITICAL"},
+		{slogadapter.LevelAlert, "ALERT"},
+		{slogadapter.LevelEmergency, "EMERGENCY"},
+	}
+
+	for _, tt := range tests {
+		attr := slog.Any(slog.LevelKey, tt.level)
+		res := slogadapter.ReplaceLevelAttr(nil, attr)
+		if res.Value.String() != tt.expected {
+			t.Errorf("ReplaceLevelAttr(%v) = %s; want %s", tt.level, res.Value.String(), tt.expected)
+		}
+	}
+}
+
+func TestSlogHandlerCustomLevels(t *testing.T) {
+	var buf bytes.Buffer
+	slogH := slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		Level:       slog.LevelDebug,
+		ReplaceAttr: slogadapter.ReplaceLevelAttr,
+	})
+	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG)
+	logger := monogo.New("custom-chan", []monogo.Handler{monoH}, nil)
+
+	// Notice
+	if err := logger.Notice("testing notice level"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `level=NOTICE`) {
+		t.Errorf("expected level=NOTICE in output, got: %s", out)
+	}
+	if !strings.Contains(out, `severity=NOTICE`) {
+		t.Errorf("expected severity=NOTICE in output, got: %s", out)
+	}
+
+	buf.Reset()
+
+	// Critical
+	if err := logger.Critical("testing critical level"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	out = buf.String()
+	if !strings.Contains(out, `level=CRITICAL`) {
+		t.Errorf("expected level=CRITICAL in output, got: %s", out)
+	}
+	if !strings.Contains(out, `severity=CRITICAL`) {
+		t.Errorf("expected severity=CRITICAL in output, got: %s", out)
+	}
+}
+
+
