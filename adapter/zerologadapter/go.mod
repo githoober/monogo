@@ -3,7 +3,7 @@ module github.com/githoober/monogo/adapter/zerologadapter
 go 1.24.3
 
 require (
-	github.com/githoober/monogo v0.0.0-20260927041635-11ebe7b484df
+	github.com/githoober/monogo v0.0.0-20260927134700-2e2d9b9edf1d
 	github.com/rs/zerolog v1.35.1
 )
 
