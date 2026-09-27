@@ -28,6 +28,15 @@ func (m *mockHandler) Close() error {
 	return nil
 }
 
+type mockBubblingHandler struct {
+	mockHandler
+	bubble bool
+}
+
+func (m *mockBubblingHandler) Bubble() bool {
+	return m.bubble
+}
+
 func TestLevelStringsAndParsing(t *testing.T) {
 	tests := []struct {
 		level monolog.Level
@@ -217,3 +226,69 @@ func TestLoggerPipeline(t *testing.T) {
 		t.Errorf("expected handler to be closed")
 	}
 }
+
+func TestHandlerBubblingStopsPropagation(t *testing.T) {
+	// Top handler: handles ERROR+, bubble = false
+	topHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monolog.ERROR},
+		bubble:      false,
+	}
+
+	// Bottom handler: handles DEBUG+, bubble = true
+	bottomHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monolog.DEBUG},
+		bubble:      true,
+	}
+
+	logger := monolog.New("bubble-test", []monolog.Handler{topHandler, bottomHandler}, nil)
+
+	// 1. Log INFO: topHandler does NOT handle it, so it should bypass topHandler and reach bottomHandler
+	if err := logger.Info("info message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 0 {
+		t.Errorf("top handler should not have received info message")
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Fatalf("bottom handler should have received info message, got %d", len(bottomHandler.records))
+	}
+
+	// 2. Log ERROR: topHandler handles it and bubble = false, so bottomHandler should NOT receive it
+	if err := logger.Error("error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 1 {
+		t.Fatalf("top handler should have received error message, got %d", len(topHandler.records))
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Errorf("bottom handler should NOT have received error message due to bubble=false, got %d", len(bottomHandler.records))
+	}
+}
+
+func TestHandlerBubblingContinuesWhenTrue(t *testing.T) {
+	// Top handler: handles ERROR+, bubble = true
+	topHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monolog.ERROR},
+		bubble:      true,
+	}
+
+	// Bottom handler: handles DEBUG+, bubble = true
+	bottomHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monolog.DEBUG},
+		bubble:      true,
+	}
+
+	logger := monolog.New("bubble-test-continue", []monolog.Handler{topHandler, bottomHandler}, nil)
+
+	// Log ERROR: both handlers handle it because topHandler has bubble = true
+	if err := logger.Error("error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 1 {
+		t.Fatalf("expected top handler to have 1 record, got %d", len(topHandler.records))
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Fatalf("expected bottom handler to have 1 record, got %d", len(bottomHandler.records))
+	}
+}
+

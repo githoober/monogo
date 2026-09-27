@@ -188,3 +188,52 @@ func TestNullAndTestHandler(t *testing.T) {
 		t.Errorf("Test handler HasRecord failed to find record")
 	}
 }
+
+func TestBaseHandlerBubble(t *testing.T) {
+	bh := handler.NewBaseHandler(monolog.INFO, true)
+	if !bh.Bubble() {
+		t.Errorf("expected default bubble to be true")
+	}
+
+	bh.SetBubble(false)
+	if bh.Bubble() {
+		t.Errorf("expected bubble to be false after SetBubble(false)")
+	}
+}
+
+func TestStreamHandlerBubbling(t *testing.T) {
+	var buf1 bytes.Buffer
+	var buf2 bytes.Buffer
+
+	sh1 := handler.NewStream(&buf1, monolog.ERROR)
+	sh1.SetBubble(false)
+
+	sh2 := handler.NewStream(&buf2, monolog.DEBUG)
+
+	logger := monolog.New("bubble-stream-test", []monolog.Handler{sh1, sh2}, nil)
+
+	// INFO: sh1 does not handle, so sh2 receives it
+	if err := logger.Info("info msg"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if buf1.Len() != 0 {
+		t.Errorf("expected buf1 to be empty, got: %s", buf1.String())
+	}
+	if !strings.Contains(buf2.String(), "info msg") {
+		t.Errorf("expected buf2 to contain info msg, got: %s", buf2.String())
+	}
+
+	buf2.Reset()
+
+	// ERROR: sh1 handles it and stops bubbling (sh1.Bubble() == false), sh2 should not receive it
+	if err := logger.Error("error msg"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf1.String(), "error msg") {
+		t.Errorf("expected buf1 to contain error msg, got: %s", buf1.String())
+	}
+	if buf2.Len() != 0 {
+		t.Errorf("expected buf2 to be empty due to bubble=false on sh1, got: %s", buf2.String())
+	}
+}
+

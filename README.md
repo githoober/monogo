@@ -114,6 +114,26 @@ logger.Info("Step 2 processing")   // Buffered silently
 logger.Error("Step 3 failed!")     // Triggers flush: prints Step 1, Step 2, and Step 3
 ```
 
+## Handler Bubbling
+
+Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By default, records bubble through all handlers that handle the record's level. A handler can stop propagation down the stack by disabling bubbling with `.SetBubble(false)`:
+
+```go
+// Error-only handler that absorbs ERROR logs and prevents them from reaching stdout
+errFile, _ := os.OpenFile("errors.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+errHandler := handler.NewStream(errFile, monolog.ERROR)
+errHandler.SetBubble(false) // Stops propagation for records handled here
+
+stdoutHandler := handler.NewStream(os.Stdout, monolog.DEBUG)
+
+// Handlers are evaluated in stack order (errHandler runs first)
+logger := monolog.New("app", []monolog.Handler{errHandler, stdoutHandler}, nil)
+
+logger.Info("Normal message")   // errHandler ignores; prints to stdout
+logger.Error("Critical error")  // errHandler handles and suppresses bubbling; only written to errors.log
+```
+
+
 ## Logging JSON to a File
 
 Setting up Monogo to log formatted JSON records to a file is straightforward:

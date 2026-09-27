@@ -68,5 +68,7 @@ Built-in handlers include:
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
 
+Handlers support propagation control (bubbling) via the `monolog.Bubbler` interface and `BaseHandler.SetBubble(bool)`. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
+
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers.

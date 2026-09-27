@@ -10,6 +10,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Error Handling** | Exceptions (`throw \Exception`) | Explicit `error` return values | Idiomatic Go error handling. |
 | **Call-site Fields** | Array `['user' => 42]` | Variadic `...map[string]interface{}` & `context.Context` | Supports both in-place map literals and Go's `context.Context`. |
 | **Processors** | Callable `function(LogRecord $r)` | `Processor` interface & `ProcessorFunc` | Mirrors Go's standard `http.Handler` / `http.HandlerFunc` pattern. |
+| **Bubbling** | `$bubble = false` halts propagation | `Bubbler` interface & `SetBubble(bool)` | Stop record propagation down the handler stack when `Bubble()` returns `false`. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |
 
 ---

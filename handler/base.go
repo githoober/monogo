@@ -24,6 +24,8 @@ func NewBaseHandler(level monolog.Level, bubble bool) BaseHandler {
 
 // IsHandling checks if record level meets minimum level threshold.
 func (b *BaseHandler) IsHandling(level monolog.Level) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return level >= b.level
 }
 
@@ -48,7 +50,16 @@ func (b *BaseHandler) Formatter() monolog.Formatter {
 	return b.formatter
 }
 
+// SetBubble updates whether handler allows bubbling.
+func (b *BaseHandler) SetBubble(bubble bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.bubble = bubble
+}
+
 // Bubble returns whether handler allows bubbling.
 func (b *BaseHandler) Bubble() bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.bubble
 }
