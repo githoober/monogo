@@ -19,12 +19,56 @@ func NewZerologHandler(l zerolog.Logger, minLevel monogo.Level, opts ...handler.
 	}
 }
 
+// ToZerologLevel maps a monogo.Level to the corresponding zerolog.Level.
+// High severity levels (CRITICAL, ALERT, EMERGENCY) map to zerolog.ErrorLevel
+// to avoid invoking zerolog.FatalLevel which triggers os.Exit(1).
+func ToZerologLevel(lvl monogo.Level) zerolog.Level {
+	switch {
+	case lvl < monogo.INFO:
+		return zerolog.DebugLevel
+	case lvl < monogo.WARNING:
+		return zerolog.InfoLevel
+	case lvl < monogo.ERROR:
+		return zerolog.WarnLevel
+	default:
+		return zerolog.ErrorLevel
+	}
+}
+
+// FromZerologLevel maps a zerolog.Level to the closest monogo.Level.
+func FromZerologLevel(lvl zerolog.Level) monogo.Level {
+	switch lvl {
+	case zerolog.TraceLevel, zerolog.DebugLevel:
+		return monogo.DEBUG
+	case zerolog.InfoLevel:
+		return monogo.INFO
+	case zerolog.WarnLevel:
+		return monogo.WARNING
+	case zerolog.ErrorLevel:
+		return monogo.ERROR
+	case zerolog.FatalLevel:
+		return monogo.EMERGENCY
+	case zerolog.PanicLevel:
+		return monogo.ALERT
+	default:
+		return monogo.INFO
+	}
+}
+
 func (z *ZerologHandler) Handle(record monogo.Record) error {
-	zLevel := mapMonogoToZerologLevel(record.Level)
+	zLevel := ToZerologLevel(record.Level)
 
 	event := z.logger.WithLevel(zLevel)
 	if !event.Enabled() {
 		return nil
+	}
+
+	if !record.Time.IsZero() {
+		event = event.Time(zerolog.TimestampFieldName, record.Time)
+	}
+
+	if record.Level == monogo.NOTICE || record.Level >= monogo.CRITICAL {
+		event = event.Str("severity", record.Level.String())
 	}
 
 	if record.Channel != "" {
@@ -45,19 +89,4 @@ func (z *ZerologHandler) Handle(record monogo.Record) error {
 
 func (z *ZerologHandler) Close() error {
 	return nil
-}
-
-func mapMonogoToZerologLevel(lvl monogo.Level) zerolog.Level {
-	switch {
-	case lvl < monogo.INFO:
-		return zerolog.DebugLevel
-	case lvl < monogo.WARNING:
-		return zerolog.InfoLevel
-	case lvl < monogo.ERROR:
-		return zerolog.WarnLevel
-	case lvl < monogo.CRITICAL:
-		return zerolog.ErrorLevel
-	default:
-		return zerolog.FatalLevel
-	}
 }

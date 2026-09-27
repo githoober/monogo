@@ -88,3 +88,106 @@ func TestZerologHandlerBubbling(t *testing.T) {
 	}
 }
 
+func TestToZerologLevel(t *testing.T) {
+	tests := []struct {
+		monogoLevel monogo.Level
+		expected    zerolog.Level
+	}{
+		{monogo.DEBUG, zerolog.DebugLevel},
+		{monogo.INFO, zerolog.InfoLevel},
+		{monogo.NOTICE, zerolog.InfoLevel},
+		{monogo.WARNING, zerolog.WarnLevel},
+		{monogo.ERROR, zerolog.ErrorLevel},
+		{monogo.CRITICAL, zerolog.ErrorLevel},
+		{monogo.ALERT, zerolog.ErrorLevel},
+		{monogo.EMERGENCY, zerolog.ErrorLevel},
+	}
+
+	for _, tt := range tests {
+		actual := zerologadapter.ToZerologLevel(tt.monogoLevel)
+		if actual != tt.expected {
+			t.Errorf("ToZerologLevel(%v) = %v; want %v", tt.monogoLevel, actual, tt.expected)
+		}
+	}
+}
+
+func TestFromZerologLevel(t *testing.T) {
+	tests := []struct {
+		zerologLevel zerolog.Level
+		expected     monogo.Level
+	}{
+		{zerolog.TraceLevel, monogo.DEBUG},
+		{zerolog.DebugLevel, monogo.DEBUG},
+		{zerolog.InfoLevel, monogo.INFO},
+		{zerolog.WarnLevel, monogo.WARNING},
+		{zerolog.ErrorLevel, monogo.ERROR},
+		{zerolog.FatalLevel, monogo.EMERGENCY},
+		{zerolog.PanicLevel, monogo.ALERT},
+		{zerolog.NoLevel, monogo.INFO},
+	}
+
+	for _, tt := range tests {
+		actual := zerologadapter.FromZerologLevel(tt.zerologLevel)
+		if actual != tt.expected {
+			t.Errorf("FromZerologLevel(%v) = %v; want %v", tt.zerologLevel, actual, tt.expected)
+		}
+	}
+}
+
+func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
+	var buf bytes.Buffer
+	zLogger := zerolog.New(&buf).With().Logger()
+
+	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
+	logger := monogo.New("zerolog-severity-test", []monogo.Handler{zh}, nil)
+
+	// Notice: should map to "info" with severity "NOTICE"
+	if err := logger.Notice("notice message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if res["level"] != "info" {
+		t.Errorf("expected level 'info', got: %v", res["level"])
+	}
+	if res["severity"] != "NOTICE" {
+		t.Errorf("expected severity 'NOTICE', got: %v", res["severity"])
+	}
+
+	buf.Reset()
+
+	// Critical: must NOT exit, should map to "error" with severity "CRITICAL"
+	if err := logger.Critical("critical message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	res = nil
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if res["level"] != "error" {
+		t.Errorf("expected level 'error', got: %v", res["level"])
+	}
+	if res["severity"] != "CRITICAL" {
+		t.Errorf("expected severity 'CRITICAL', got: %v", res["severity"])
+	}
+
+	buf.Reset()
+
+	// Regular Error: should NOT have extra "severity" field
+	if err := logger.Error("standard error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	res = nil
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if res["level"] != "error" {
+		t.Errorf("expected level 'error', got: %v", res["level"])
+	}
+	if _, ok := res["severity"]; ok {
+		t.Errorf("did not expect 'severity' field for standard ERROR, got: %v", res["severity"])
+	}
+}
+
