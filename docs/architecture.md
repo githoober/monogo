@@ -76,3 +76,19 @@ Handlers and formatters also implement batch operations (`HandleBatch`, `FormatB
 
 ### Rationale
 Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically.
+
+---
+
+## 7. Two-Tier Processors & Copy-On-Write Handler Isolation
+
+### Decision
+Monogo implements a two-tier processor architecture:
+1. **Logger-Level Processors (`monogo.New(..., processors)` / `logger.PushProcessor(p)`)**: Execute on every record at the logger boundary before any handler is invoked. Ideal for global enrichment (e.g. hostname, process ID, environment tags).
+2. **Per-Handler Processors (`handler.WithProcessor(p...)`)**: Configured at construction time on individual handlers. Handlers implement `monogo.ProcessableHandler` via `handler.BaseHandler`.
+
+When a handler executes its processor pipeline via `ProcessRecord`:
+- If no processors are configured, the record is returned immediately with zero allocations.
+- If processors are configured, `record = record.Clone()` makes deep copies of `Context` and `Extra` maps before running the handler's processors.
+
+### Rationale
+In PHP Monolog, handlers mutate the `LogRecord` object directly. In concurrent Go environments, mutable shared state across multiple handlers causes data races and unwanted mutation leakage (e.g., an audit handler adding destination-specific tags that leak into a general file log). Copy-on-write cloning in `ProcessRecord` guarantees complete pipeline isolation: destination-specific transformations (such as PII redaction, credential masking, or destination labeling) apply exclusively to that specific handler. Furthermore, using construction-time functional options (`handler.WithProcessor`) rather than mutable runtime setters preserves thread safety and immutability during log dispatch.
