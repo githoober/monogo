@@ -191,3 +191,24 @@ func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
 	}
 }
 
+func TestZerologHandlerHandleBatch(t *testing.T) {
+	var buf bytes.Buffer
+	zLogger := zerolog.New(&buf).With().Logger()
+	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
+
+	records := []monogo.Record{
+		{Message: "zero batch 1", Level: monogo.INFO, Channel: "zero-chan"},
+		{Message: "zero batch 2", Level: monogo.WARNING, Channel: "zero-chan"},
+	}
+
+	if err := zh.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 log lines, got %d: %q", len(lines), buf.String())
+	}
+}
+
+

@@ -29,6 +29,18 @@ func (t *Test) Handle(record monogo.Record) error {
 	return nil
 }
 
+// HandleBatch stores all handled log records in memory.
+func (t *Test) HandleBatch(records []monogo.Record) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, rec := range records {
+		if t.IsHandling(rec.Level) {
+			t.records = append(t.records, rec)
+		}
+	}
+	return nil
+}
+
 // Records returns a slice copy of logged records.
 func (t *Test) Records() []monogo.Record {
 	t.mu.RLock()
@@ -77,6 +89,11 @@ func NewNull(opts ...Option) *Null {
 
 // Handle does nothing.
 func (n *Null) Handle(record monogo.Record) error {
+	return nil
+}
+
+// HandleBatch does nothing.
+func (n *Null) HandleBatch(records []monogo.Record) error {
 	return nil
 }
 

@@ -40,20 +40,28 @@ func (b *Buffer) Handle(record monogo.Record) error {
 	return nil
 }
 
-// Flush flushes buffered records to wrapped handler.
+// Flush flushes buffered records to wrapped handler using HandleBatch.
 func (b *Buffer) Flush() error {
 	b.mu.Lock()
+	if len(b.buffer) == 0 {
+		b.mu.Unlock()
+		return nil
+	}
 	records := b.buffer
 	b.buffer = make([]monogo.Record, 0, b.bufferLimit)
 	b.mu.Unlock()
 
-	var lastErr error
+	return b.handler.HandleBatch(records)
+}
+
+// HandleBatch buffers a batch of records and flushes if conditions are met.
+func (b *Buffer) HandleBatch(records []monogo.Record) error {
 	for _, rec := range records {
-		if err := b.handler.Handle(rec); err != nil {
-			lastErr = err
+		if err := b.Handle(rec); err != nil {
+			return err
 		}
 	}
-	return lastErr
+	return nil
 }
 
 // Close flushes buffer and closes wrapped handler.

@@ -258,3 +258,139 @@ func TestStreamHandlerBubbling(t *testing.T) {
 	}
 }
 
+type batchTrackingHandler struct {
+	*handler.Test
+	batchCalls int
+}
+
+func newBatchTrackingHandler(minLevel monogo.Level) *batchTrackingHandler {
+	return &batchTrackingHandler{
+		Test: handler.NewTest(minLevel),
+	}
+}
+
+func (b *batchTrackingHandler) HandleBatch(records []monogo.Record) error {
+	b.batchCalls++
+	return b.Test.HandleBatch(records)
+}
+
+func TestStreamHandlerHandleBatch(t *testing.T) {
+	var buf bytes.Buffer
+	sh := handler.NewStream(&buf, monogo.INFO)
+
+	records := []monogo.Record{
+		{Message: "debug message", Level: monogo.DEBUG}, // ignored
+		{Message: "info message", Level: monogo.INFO},   // handled
+		{Message: "error message", Level: monogo.ERROR}, // handled
+	}
+
+	if err := sh.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "debug message") {
+		t.Errorf("expected debug message to be skipped by minLevel")
+	}
+	if !strings.Contains(out, "info message") {
+		t.Errorf("expected info message to be written")
+	}
+	if !strings.Contains(out, "error message") {
+		t.Errorf("expected error message to be written")
+	}
+}
+
+func TestBufferHandlerFlushesViaHandleBatch(t *testing.T) {
+	inner := newBatchTrackingHandler(monogo.DEBUG)
+	bufH := handler.NewBuffer(inner, 10, monogo.ERROR)
+
+	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.DEBUG})
+	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
+
+	if inner.batchCalls != 0 {
+		t.Fatalf("expected 0 batch calls before flush, got %d", inner.batchCalls)
+	}
+
+	// Trigger flush via ERROR record
+	_ = bufH.Handle(monogo.Record{Message: "msg 3", Level: monogo.ERROR})
+
+	if inner.batchCalls != 1 {
+		t.Errorf("expected exactly 1 HandleBatch call on flush, got %d", inner.batchCalls)
+	}
+	if len(inner.Records()) != 3 {
+		t.Errorf("expected 3 records in wrapped handler, got %d", len(inner.Records()))
+	}
+}
+
+func TestFingersCrossedFlushesViaHandleBatch(t *testing.T) {
+	inner := newBatchTrackingHandler(monogo.DEBUG)
+	fc := handler.NewFingersCrossed(inner, monogo.ERROR, 10)
+
+	_ = fc.Handle(monogo.Record{Message: "step 1", Level: monogo.INFO})
+	_ = fc.Handle(monogo.Record{Message: "step 2", Level: monogo.WARNING})
+
+	if inner.batchCalls != 0 {
+		t.Fatalf("expected 0 batch calls before activation, got %d", inner.batchCalls)
+	}
+
+	// Trigger activation via ERROR
+	_ = fc.Handle(monogo.Record{Message: "failure", Level: monogo.ERROR})
+
+	if inner.batchCalls != 1 {
+		t.Errorf("expected exactly 1 HandleBatch call on trigger, got %d", inner.batchCalls)
+	}
+	if len(inner.Records()) != 3 {
+		t.Errorf("expected 3 records flushed, got %d", len(inner.Records()))
+	}
+}
+
+func TestFilterHandlerHandleBatch(t *testing.T) {
+	inner := newBatchTrackingHandler(monogo.DEBUG)
+	filter := handler.NewFilter(inner, monogo.INFO, monogo.WARNING)
+
+	records := []monogo.Record{
+		{Message: "debug", Level: monogo.DEBUG},     // filtered out
+		{Message: "info", Level: monogo.INFO},       // passes
+		{Message: "warn", Level: monogo.WARNING},   // passes
+		{Message: "error", Level: monogo.ERROR},     // filtered out
+	}
+
+	if err := filter.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if inner.batchCalls != 1 {
+		t.Errorf("expected 1 HandleBatch call, got %d", inner.batchCalls)
+	}
+	recs := inner.Records()
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 filtered records, got %d", len(recs))
+	}
+	if recs[0].Message != "info" || recs[1].Message != "warn" {
+		t.Errorf("unexpected records: %v", recs)
+	}
+}
+
+func TestGroupHandlerHandleBatch(t *testing.T) {
+	h1 := newBatchTrackingHandler(monogo.DEBUG)
+	h2 := newBatchTrackingHandler(monogo.DEBUG)
+	group := handler.NewGroup([]monogo.Handler{h1, h2})
+
+	records := []monogo.Record{
+		{Message: "group 1", Level: monogo.INFO},
+		{Message: "group 2", Level: monogo.WARNING},
+	}
+
+	if err := group.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if h1.batchCalls != 1 || h2.batchCalls != 1 {
+		t.Errorf("expected both sub-handlers to receive 1 HandleBatch call, got h1=%d, h2=%d", h1.batchCalls, h2.batchCalls)
+	}
+	if len(h1.Records()) != 2 || len(h2.Records()) != 2 {
+		t.Errorf("expected both sub-handlers to have 2 records, got h1=%d, h2=%d", len(h1.Records()), len(h2.Records()))
+	}
+}
+
+

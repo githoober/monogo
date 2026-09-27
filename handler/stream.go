@@ -46,6 +46,35 @@ func (s *Stream) Handle(record monogo.Record) error {
 	return err
 }
 
+// HandleBatch formats and writes a batch of records to the stream writer in a single operation.
+func (s *Stream) HandleBatch(records []monogo.Record) error {
+	handled := make([]monogo.Record, 0, len(records))
+	for _, rec := range records {
+		if s.IsHandling(rec.Level) {
+			handled = append(handled, rec)
+		}
+	}
+	if len(handled) == 0 {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f := s.Formatter()
+	if f == nil {
+		f = formatter.NewLine("", "")
+	}
+
+	bytes, err := f.FormatBatch(handled)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.writer.Write(bytes)
+	return err
+}
+
 // Close closes the stream writer if it implements io.Closer.
 func (s *Stream) Close() error {
 	s.mu.Lock()

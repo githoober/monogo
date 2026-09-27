@@ -1,9 +1,10 @@
 package monogo
 
-// Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
+// Handler handles log records (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
 	IsHandling(level Level) bool
 	Handle(record Record) error
+	HandleBatch(records []Record) error
 	Close() error
 }
 
@@ -26,7 +27,8 @@ func (f ProcessorFunc) Process(record Record) Record {
 	return f(record)
 }
 
-// Formatter formats a Record into bytes or string representation.
+// Formatter formats a Record or slice of Records into bytes or string representation.
 type Formatter interface {
 	Format(record Record) ([]byte, error)
+	FormatBatch(records []Record) ([]byte, error)
 }

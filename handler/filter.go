@@ -57,6 +57,26 @@ func (f *Filter) Handle(record monogo.Record) error {
 	return f.handler.Handle(record)
 }
 
+// HandleBatch filters records and forwards matching records to the wrapped handler's HandleBatch.
+func (f *Filter) HandleBatch(records []monogo.Record) error {
+	filtered := make([]monogo.Record, 0, len(records))
+	for _, rec := range records {
+		if f.predicate != nil {
+			if f.predicate(rec) {
+				filtered = append(filtered, rec)
+			}
+		} else {
+			if rec.Level >= f.minLevel && rec.Level <= f.maxLevel {
+				filtered = append(filtered, rec)
+			}
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return f.handler.HandleBatch(filtered)
+}
+
 // Close closes wrapped handler.
 func (f *Filter) Close() error {
 	return f.handler.Close()

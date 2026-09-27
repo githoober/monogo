@@ -54,14 +54,8 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 		f.buffer = nil
 		f.mu.Unlock()
 
-		// Flush all accumulated records to wrapped handler
-		var lastErr error
-		for _, rec := range buffered {
-			if err := f.handler.Handle(rec); err != nil {
-				lastErr = err
-			}
-		}
-		return lastErr
+		// Flush all accumulated records to wrapped handler via HandleBatch
+		return f.handler.HandleBatch(buffered)
 	}
 
 	// Buffer the record
@@ -73,6 +67,16 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 	}
 
 	f.mu.Unlock()
+	return nil
+}
+
+// HandleBatch processes a batch of records.
+func (f *FingersCrossed) HandleBatch(records []monogo.Record) error {
+	for _, rec := range records {
+		if err := f.Handle(rec); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

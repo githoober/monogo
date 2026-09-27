@@ -11,6 +11,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Call-site Fields** | Array `['user' => 42]` | Variadic `...map[string]interface{}` & `context.Context` | Supports both in-place map literals and Go's `context.Context`. |
 | **Processors** | Callable `function(LogRecord $r)` | `Processor` interface & `ProcessorFunc` | Mirrors Go's standard `http.Handler` / `http.HandlerFunc` pattern. |
 | **Bubbling** | `$bubble = false` halts propagation | `Bubbler` interface & `handler.WithBubble(bool)` option | Configured at construction time via options; stops record propagation down the handler stack when `Bubble()` returns `false`. |
+| **Batch Handling** | `handleBatch(array $records)` / `formatBatch` | `HandleBatch([]Record) error` / `FormatBatch([]Record) ([]byte, error)` | First-class batch contracts on `Handler` and `Formatter` for efficient atomic flushes and bulk formatting. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |
 
 ---
