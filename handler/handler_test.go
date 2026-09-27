@@ -41,8 +41,7 @@ func TestStreamHandler(t *testing.T) {
 
 func TestStreamHandlerJSONFile(t *testing.T) {
 	var buf bytes.Buffer
-	sh := handler.NewStream(&buf, monolog.DEBUG)
-	sh.SetFormatter(formatter.NewJSON(""))
+	sh := handler.NewStream(&buf, monolog.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
 
 	logger := monolog.New("json-file-app", []monolog.Handler{sh}, nil)
 

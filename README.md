@@ -72,17 +72,15 @@ import (
 )
 
 func main() {
-	// Create a rotating file handler (rotates when log reaches 10MB, keeps 5 backups, retains for 30 days, compresses)
+	// Create a rotating file handler (rotates when log reaches 10MB, keeps 5 backups, retains for 30 days, compresses, formatted as JSON)
 	rotHandler := handler.NewRotatingFile("app.log", monolog.DEBUG,
 		handler.WithMaxSize(10),
 		handler.WithMaxBackups(5),
 		handler.WithMaxAge(30),
 		handler.WithCompress(true),
+		handler.WithFormatter(formatter.NewJSON("")),
 	)
 	defer rotHandler.Close()
-
-	// Optional: format as JSON
-	rotHandler.SetFormatter(formatter.NewJSON(""))
 
 	logger := monolog.New("app", []monolog.Handler{rotHandler}, nil)
 	logger.Info("App initialized with rolling log files")
@@ -156,11 +154,8 @@ func main() {
 	}
 	defer file.Close()
 
-	// Create a Stream handler writing to the file
-	fileHandler := handler.NewStream(file, monolog.DEBUG)
-
-	// Attach the JSON Formatter
-	fileHandler.SetFormatter(formatter.NewJSON(""))
+	// Create a Stream handler writing JSON logs to the file
+	fileHandler := handler.NewStream(file, monolog.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
 
 	// Initialize Logger
 	logger := monolog.New("app", []monolog.Handler{fileHandler}, nil)

@@ -21,7 +21,9 @@ func NewStream(w io.Writer, level monolog.Level, opts ...Option) *Stream {
 		BaseHandler: NewBaseHandler(level, opts...),
 		writer:      w,
 	}
-	h.SetFormatter(formatter.NewLine("", ""))
+	if h.formatter == nil {
+		h.formatter = formatter.NewLine("", "")
+	}
 	return h
 }
 
