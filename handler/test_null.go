@@ -23,6 +23,7 @@ func NewTest(level monogo.Level, opts ...Option) *Test {
 
 // Handle stores the log record in memory.
 func (t *Test) Handle(record monogo.Record) error {
+	record = t.ProcessRecord(record)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.records = append(t.records, record)
@@ -35,7 +36,7 @@ func (t *Test) HandleBatch(records []monogo.Record) error {
 	defer t.mu.Unlock()
 	for _, rec := range records {
 		if t.IsHandling(rec.Level) {
-			t.records = append(t.records, rec)
+			t.records = append(t.records, t.ProcessRecord(rec))
 		}
 	}
 	return nil

@@ -10,6 +10,7 @@ import (
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/adapter/slogadapter"
 	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/processor"
 )
 
 func TestSlogHandler(t *testing.T) {
@@ -221,6 +222,26 @@ func TestSlogHandlerWithBufferFallback(t *testing.T) {
 	}
 	if !strings.Contains(out, `msg="buffered 2"`) {
 		t.Errorf("expected buffered 2 in output, got: %s", out)
+	}
+}
+
+var _ monogo.ProcessableHandler = (*slogadapter.SlogHandler)(nil)
+
+func TestSlogHandlerWithProcessor(t *testing.T) {
+	var buf bytes.Buffer
+	slogH := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG,
+		handler.WithProcessor(processor.Tag("slog_tag", "annotated")),
+	)
+
+	logger := monogo.New("slog-proc-test", []monogo.Handler{monoH}, nil)
+	if err := logger.Info("testing slog handler processor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, `extra.slog_tag=annotated`) {
+		t.Errorf("expected extra.slog_tag=annotated in slog output, got: %s", out)
 	}
 }
 

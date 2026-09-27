@@ -54,6 +54,7 @@ func (f *Filter) Handle(record monogo.Record) error {
 		}
 	}
 
+	record = f.ProcessRecord(record)
 	return f.handler.Handle(record)
 }
 
@@ -65,11 +66,11 @@ func (f *Filter) HandleBatch(records []monogo.Record) error {
 	for _, rec := range records {
 		if f.predicate != nil {
 			if f.predicate(rec) {
-				filtered = append(filtered, rec)
+				filtered = append(filtered, f.ProcessRecord(rec))
 			}
 		} else {
 			if rec.Level >= f.minLevel && rec.Level <= f.maxLevel {
-				filtered = append(filtered, rec)
+				filtered = append(filtered, f.ProcessRecord(rec))
 			}
 		}
 	}

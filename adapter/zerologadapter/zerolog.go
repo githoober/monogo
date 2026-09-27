@@ -56,6 +56,7 @@ func FromZerologLevel(lvl zerolog.Level) monogo.Level {
 }
 
 func (z *ZerologHandler) Handle(record monogo.Record) error {
+	record = z.ProcessRecord(record)
 	zLevel := ToZerologLevel(record.Level)
 
 	event := z.logger.WithLevel(zLevel)

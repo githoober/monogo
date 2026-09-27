@@ -9,6 +9,7 @@ import (
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/adapter/zerologadapter"
 	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/processor"
 	"github.com/rs/zerolog"
 )
 
@@ -203,6 +204,34 @@ func TestZerologHandlerWithBufferFallback(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 log lines, got %d: %q", len(lines), buf.String())
+	}
+}
+
+var _ monogo.ProcessableHandler = (*zerologadapter.ZerologHandler)(nil)
+
+func TestZerologHandlerWithProcessor(t *testing.T) {
+	var buf bytes.Buffer
+	zLogger := zerolog.New(&buf).With().Logger()
+	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG,
+		handler.WithProcessor(processor.Tag("cluster", "zerolog_us_east")),
+	)
+
+	logger := monogo.New("zerolog-proc-test", []monogo.Handler{zh}, nil)
+	if err := logger.Info("testing zerolog handler processor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &res); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+
+	extra, ok := res["extra"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected extra in zerolog output, got: %v", res["extra"])
+	}
+	if extra["cluster"] != "zerolog_us_east" {
+		t.Errorf("expected extra.cluster = 'zerolog_us_east', got: %v", extra["cluster"])
 	}
 }
 

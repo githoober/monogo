@@ -11,6 +11,7 @@ import (
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/formatter"
 	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/processor"
 )
 
 func TestStreamHandler(t *testing.T) {
@@ -426,6 +427,264 @@ func TestBufferFallbackForNonBatchHandler(t *testing.T) {
 	}
 	if len(inner.records) != 3 {
 		t.Errorf("expected 3 records, got %d", len(inner.records))
+	}
+}
+
+// Ensure all handlers implement monogo.ProcessableHandler at compile time
+var (
+	_ monogo.ProcessableHandler = (*handler.Stream)(nil)
+	_ monogo.ProcessableHandler = (*handler.Buffer)(nil)
+	_ monogo.ProcessableHandler = (*handler.Filter)(nil)
+	_ monogo.ProcessableHandler = (*handler.Group)(nil)
+	_ monogo.ProcessableHandler = (*handler.FingersCrossed)(nil)
+	_ monogo.ProcessableHandler = (*handler.Test)(nil)
+	_ monogo.ProcessableHandler = (*handler.Null)(nil)
+)
+
+func TestHandlerWithProcessorInspection(t *testing.T) {
+	p1 := processor.Tag("tag1", "val1")
+	p2 := processor.Tag("tag2", "val2")
+
+	sh := handler.NewStream(&bytes.Buffer{}, monogo.DEBUG, handler.WithProcessor(p1), handler.WithProcessors(p2))
+
+	procs := sh.Processors()
+	if len(procs) != 2 {
+		t.Fatalf("expected 2 processors, got %d", len(procs))
+	}
+
+	// Verify mutating returned slice does not alter handler's internal processor list
+	procs[0] = nil
+	if sh.Processors()[0] == nil {
+		t.Errorf("expected Processors() to return a copy, not an internal reference")
+	}
+}
+
+func TestStreamHandlerWithProcessor(t *testing.T) {
+	var buf bytes.Buffer
+	sh := handler.NewStream(&buf, monogo.DEBUG,
+		handler.WithFormatter(formatter.NewJSON("")),
+		handler.WithProcessor(processor.Tag("handler_env", "stream_prod")),
+	)
+
+	logger := monogo.New("test", []monogo.Handler{sh}, nil)
+	if err := logger.Info("stream processor test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &data); err != nil {
+		t.Fatalf("failed to unmarshal JSON: %v", err)
+	}
+
+	extra, ok := data["extra"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected extra map in output, got: %v", data["extra"])
+	}
+	if extra["handler_env"] != "stream_prod" {
+		t.Errorf("expected extra.handler_env = 'stream_prod', got: %v", extra["handler_env"])
+	}
+}
+
+func TestHandlerProcessorIsolation(t *testing.T) {
+	// Two handlers on the same logger pipeline:
+	// h1 has processor Tag("target", "handler_1")
+	// h2 has processor Tag("target", "handler_2")
+	// Verifies that mutations made by h1's processor do not leak into h2,
+	// and neither leaks back to the logger or other handlers.
+	h1 := handler.NewTest(monogo.DEBUG, handler.WithProcessor(processor.Tag("h1_tag", "one")))
+	h2 := handler.NewTest(monogo.DEBUG, handler.WithProcessor(processor.Tag("h2_tag", "two")))
+	h3 := handler.NewTest(monogo.DEBUG) // No processors
+
+	logger := monogo.New("isolation-test", []monogo.Handler{h1, h2, h3}, nil)
+
+	if err := logger.Info("message to all handlers"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recs1 := h1.Records()
+	recs2 := h2.Records()
+	recs3 := h3.Records()
+
+	if len(recs1) != 1 || len(recs2) != 1 || len(recs3) != 1 {
+		t.Fatalf("expected 1 record in each handler, got h1=%d, h2=%d, h3=%d", len(recs1), len(recs2), len(recs3))
+	}
+
+	r1 := recs1[0]
+	r2 := recs2[0]
+	r3 := recs3[0]
+
+	// h1 must have h1_tag but NOT h2_tag
+	if r1.Extra["h1_tag"] != "one" {
+		t.Errorf("expected r1 to have h1_tag='one', got: %v", r1.Extra["h1_tag"])
+	}
+	if _, exists := r1.Extra["h2_tag"]; exists {
+		t.Errorf("r1 unexpectedly has h2_tag: %v", r1.Extra["h2_tag"])
+	}
+
+	// h2 must have h2_tag but NOT h1_tag
+	if r2.Extra["h2_tag"] != "two" {
+		t.Errorf("expected r2 to have h2_tag='two', got: %v", r2.Extra["h2_tag"])
+	}
+	if _, exists := r2.Extra["h1_tag"]; exists {
+		t.Errorf("r2 unexpectedly has h1_tag: %v", r2.Extra["h1_tag"])
+	}
+
+	// h3 must have NO extra tags
+	if _, exists := r3.Extra["h1_tag"]; exists {
+		t.Errorf("r3 unexpectedly contaminated with h1_tag: %v", r3.Extra["h1_tag"])
+	}
+	if _, exists := r3.Extra["h2_tag"]; exists {
+		t.Errorf("r3 unexpectedly contaminated with h2_tag: %v", r3.Extra["h2_tag"])
+	}
+}
+
+func TestBufferHandlerWithProcessor(t *testing.T) {
+	inner := handler.NewTest(monogo.DEBUG)
+	bufH := handler.NewBuffer(inner, 2, monogo.ERROR,
+		handler.WithProcessor(processor.Tag("buffer_tag", "buffered_val")),
+	)
+
+	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO}) // flushes due to limit 2
+
+	recs := inner.Records()
+	if len(recs) != 2 {
+		t.Fatalf("expected 2 records flushed to inner handler, got %d", len(recs))
+	}
+	for i, r := range recs {
+		if r.Extra["buffer_tag"] != "buffered_val" {
+			t.Errorf("record %d missing buffer_tag, got: %v", i, r.Extra["buffer_tag"])
+		}
+	}
+}
+
+func TestFilterHandlerWithProcessor(t *testing.T) {
+	inner := handler.NewTest(monogo.DEBUG)
+	filterH := handler.NewFilter(inner, monogo.WARNING, monogo.CRITICAL,
+		handler.WithProcessor(processor.Tag("filter_applied", true)),
+	)
+
+	// Below minLevel -> discarded, processor not run
+	_ = filterH.Handle(monogo.Record{Message: "info message", Level: monogo.INFO})
+	if len(inner.Records()) != 0 {
+		t.Errorf("expected 0 records, got %d", len(inner.Records()))
+	}
+
+	// Within range -> processed and forwarded
+	_ = filterH.Handle(monogo.Record{Message: "warning message", Level: monogo.WARNING})
+	recs := inner.Records()
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	if recs[0].Extra["filter_applied"] != true {
+		t.Errorf("expected filter_applied=true, got: %v", recs[0].Extra["filter_applied"])
+	}
+}
+
+func TestGroupHandlerWithProcessor(t *testing.T) {
+	h1 := handler.NewTest(monogo.DEBUG)
+	h2 := handler.NewTest(monogo.DEBUG)
+
+	groupH := handler.NewGroup([]monogo.Handler{h1, h2},
+		handler.WithProcessor(processor.Tag("grouped", true)),
+	)
+
+	_ = groupH.Handle(monogo.Record{Message: "grouped message", Level: monogo.INFO})
+
+	if len(h1.Records()) != 1 || len(h2.Records()) != 1 {
+		t.Fatalf("expected 1 record in each subhandler, got h1=%d, h2=%d", len(h1.Records()), len(h2.Records()))
+	}
+	if h1.Records()[0].Extra["grouped"] != true {
+		t.Errorf("expected h1 record to have grouped=true, got: %v", h1.Records()[0].Extra["grouped"])
+	}
+	if h2.Records()[0].Extra["grouped"] != true {
+		t.Errorf("expected h2 record to have grouped=true, got: %v", h2.Records()[0].Extra["grouped"])
+	}
+}
+
+func TestFingersCrossedHandlerWithProcessor(t *testing.T) {
+	inner := handler.NewTest(monogo.DEBUG)
+	fcH := handler.NewFingersCrossed(inner, monogo.ERROR, 10,
+		handler.WithProcessor(processor.Tag("fc_annotated", "yes")),
+	)
+
+	_ = fcH.Handle(monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
+	_ = fcH.Handle(monogo.Record{Message: "info 2", Level: monogo.INFO})
+	if len(inner.Records()) != 0 {
+		t.Errorf("expected 0 records before trigger, got %d", len(inner.Records()))
+	}
+
+	// Trigger with ERROR
+	_ = fcH.Handle(monogo.Record{Message: "error 3", Level: monogo.ERROR})
+	recs := inner.Records()
+	if len(recs) != 3 {
+		t.Fatalf("expected 3 records after trigger, got %d", len(recs))
+	}
+	for i, r := range recs {
+		if r.Extra["fc_annotated"] != "yes" {
+			t.Errorf("record %d missing fc_annotated, got: %v", i, r.Extra["fc_annotated"])
+		}
+	}
+}
+
+func TestBatchHandlingWithProcessor(t *testing.T) {
+	var buf bytes.Buffer
+	sh := handler.NewStream(&buf, monogo.DEBUG,
+		handler.WithFormatter(formatter.NewJSONBatch("")),
+		handler.WithProcessor(processor.Tag("batch_proc", "stream_batch")),
+	)
+
+	records := []monogo.Record{
+		{Message: "batch msg 1", Level: monogo.INFO},
+		{Message: "batch msg 2", Level: monogo.WARNING},
+	}
+
+	if err := sh.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var parsed []map[string]interface{}
+	if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+		t.Fatalf("failed to unmarshal JSON batch: %v", err)
+	}
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 batch records, got %d", len(parsed))
+	}
+	for i, item := range parsed {
+		extra, ok := item["extra"].(map[string]interface{})
+		if !ok || extra["batch_proc"] != "stream_batch" {
+			t.Errorf("item %d missing batch_proc='stream_batch', got: %v", i, item["extra"])
+		}
+	}
+}
+
+func TestGroupHandlerHandleBatchWithProcessor(t *testing.T) {
+	h1 := handler.NewTest(monogo.DEBUG)
+	h2 := handler.NewTest(monogo.DEBUG)
+
+	groupH := handler.NewGroup([]monogo.Handler{h1, h2},
+		handler.WithProcessor(processor.Tag("group_batch", "yes")),
+	)
+
+	records := []monogo.Record{
+		{Message: "b1", Level: monogo.INFO},
+		{Message: "b2", Level: monogo.ERROR},
+	}
+
+	if err := groupH.HandleBatch(records); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, h := range []*handler.Test{h1, h2} {
+		recs := h.Records()
+		if len(recs) != 2 {
+			t.Fatalf("expected 2 records, got %d", len(recs))
+		}
+		for i, r := range recs {
+			if r.Extra["group_batch"] != "yes" {
+				t.Errorf("record %d missing group_batch='yes', got: %v", i, r.Extra["group_batch"])
+			}
+		}
 	}
 }
 

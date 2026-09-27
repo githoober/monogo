@@ -29,6 +29,8 @@ func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level,
 
 // Handle buffers record and flushes if conditions are met.
 func (b *Buffer) Handle(record monogo.Record) error {
+	record = b.ProcessRecord(record)
+
 	b.mu.Lock()
 	b.buffer = append(b.buffer, record)
 	shouldFlush := record.Level >= b.flushLevel || (b.bufferLimit > 0 && len(b.buffer) >= b.bufferLimit)

@@ -70,7 +70,9 @@ Built-in handlers include:
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
 
+Handlers also support per-handler processors via `handler.WithProcessor(...)` and implement `monogo.ProcessableHandler`. Handler-specific processors execute just before formatting and dispatching. When processors are configured on a handler, the record is automatically cloned first, strictly isolating modifications (such as adding destination-specific extra tags or credentials masking) from subsequent handlers in the stack.
+
 Handlers and formatters also implement batch operations (`HandleBatch`, `FormatBatch`), allowing buffering handlers (`Buffer`, `FingersCrossed`) to flush accumulated records in atomic bulk operations without per-record locking overhead.
 
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. First-class batching ensures buffering handlers flush efficiently and atomically.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically.

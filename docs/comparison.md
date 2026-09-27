@@ -10,6 +10,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Error Handling** | Exceptions (`throw \Exception`) | Explicit `error` return values | Idiomatic Go error handling. |
 | **Call-site Fields** | Array `['user' => 42]` | Variadic `...map[string]interface{}` & `context.Context` | Supports both in-place map literals and Go's `context.Context`. |
 | **Processors** | Callable `function(LogRecord $r)` | `Processor` interface & `ProcessorFunc` | Mirrors Go's standard `http.Handler` / `http.HandlerFunc` pattern. |
+| **Per-Handler Processors** | `ProcessableHandlerInterface` (`pushProcessor`) | `ProcessableHandler` & `handler.WithProcessor(...)` | Configured at construction via functional options; executes handler-specific processors and clones records to prevent mutation leakage. |
 | **Bubbling** | `$bubble = false` halts propagation | `Bubbler` interface & `handler.WithBubble(bool)` option | Configured at construction time via options; stops record propagation down the handler stack when `Bubble()` returns `false`. |
 | **Batch Handling** | `handleBatch(array $records)` / `formatBatch` | `BatchHandler` / `BatchFormatter` interfaces | Optional segregated interfaces (`BatchHandler`, `BatchFormatter`) avoid forcing iteration boilerplate on simple handlers while enabling atomic flushes and bulk formatting where supported. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |

@@ -38,6 +38,8 @@ func (f *FingersCrossed) IsHandling(level monogo.Level) bool {
 
 // Handle buffers records until actionLevel is met or buffer capacity is exceeded, then flushes and forwards.
 func (f *FingersCrossed) Handle(record monogo.Record) error {
+	record = f.ProcessRecord(record)
+
 	f.mu.Lock()
 
 	// If already triggered, pass straight to nested handler

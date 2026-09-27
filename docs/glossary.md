@@ -49,3 +49,6 @@ Formatting options on `formatter.JSON` for multi-record batches:
 - `BatchModeNewlines` (default): Formats each record as an independent line of JSON (NDJSON).
 - `BatchModeJSON`: Formats the entire batch as a single JSON array (`[...]`).
 
+### Processable Handler
+Defined by `monogo.ProcessableHandler` (`Processors() []Processor`, `ProcessRecord(Record) Record`). Enables handlers to have dedicated processors configured via `handler.WithProcessor(...)` that execute before formatting/handling. Clones records when processors are present to prevent mutation leakage to subsequent handlers in the stack.
+

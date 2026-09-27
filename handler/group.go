@@ -30,6 +30,7 @@ func (g *Group) IsHandling(level monogo.Level) bool {
 
 // Handle sends record to all sub-handlers that handle the record level.
 func (g *Group) Handle(record monogo.Record) error {
+	record = g.ProcessRecord(record)
 	var lastErr error
 	for _, h := range g.handlers {
 		if h.IsHandling(record.Level) {
@@ -45,6 +46,14 @@ func (g *Group) Handle(record monogo.Record) error {
 // Sub-handlers implementing BatchHandler receive the batch directly;
 // others fall back to handling each handled record individually.
 func (g *Group) HandleBatch(records []monogo.Record) error {
+	if len(g.processors) > 0 {
+		processed := make([]monogo.Record, len(records))
+		for i, rec := range records {
+			processed[i] = g.ProcessRecord(rec)
+		}
+		records = processed
+	}
+
 	var lastErr error
 	for _, h := range g.handlers {
 		if bh, ok := h.(monogo.BatchHandler); ok {

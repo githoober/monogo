@@ -131,6 +131,37 @@ logger.Info("Normal message")   // errHandler ignores; prints to stdout
 logger.Error("Critical error")  // errHandler handles and suppresses bubbling; only written to errors.log
 ```
 
+## Per-Handler Processors
+
+In addition to logger-level processors, Monogo supports **Per-Handler Processors** configured at construction time via `handler.WithProcessor(...)`:
+
+```go
+import (
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/processor"
+)
+
+// Add audit-specific metadata only to the audit log handler
+auditFile, _ := os.OpenFile("audit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+auditHandler := handler.NewStream(
+	auditFile,
+	monogo.INFO,
+	handler.WithProcessor(processor.Tag("destination", "audit_trail")),
+)
+
+// Console handler receives records without the audit tag
+consoleHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+
+logger := monogo.New("app", []monogo.Handler{auditHandler, consoleHandler}, nil)
+logger.Info("User logged in", map[string]interface{}{"user_id": 42})
+```
+
+### Handler Isolation
+When per-handler processors are configured, the record is automatically cloned prior to executing the handler's processor pipeline. Any mutations made by a handler's processor (e.g. adding metadata, redacting sensitive fields, or modifying extra context) remain strictly isolated to that handler and will never leak to subsequent handlers down the logger stack.
+
 ## Batch Processing & Buffering
 
 Buffering handlers accumulate log entries and flush them via `monogo.BatchHandler` and `monogo.BatchFormatter`. Handlers that support optimized batch emission receive batches directly via `HandleBatch`, while standard handlers gracefully receive records via `Handle` without requiring iteration boilerplate:

@@ -94,6 +94,7 @@ func NewSlogHandler(h slog.Handler, minLevel monogo.Level, opts ...handler.Optio
 }
 
 func (s *SlogHandler) Handle(record monogo.Record) error {
+	record = s.ProcessRecord(record)
 	slogLevel := ToSlogLevel(record.Level)
 	if !s.slogHandler.Enabled(context.Background(), slogLevel) {
 		return nil

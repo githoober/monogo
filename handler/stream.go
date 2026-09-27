@@ -30,6 +30,8 @@ func NewStream(w io.Writer, level monogo.Level, opts ...Option) *Stream {
 
 // Handle formats and writes the record to stream writer.
 func (s *Stream) Handle(record monogo.Record) error {
+	record = s.ProcessRecord(record)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -52,7 +54,7 @@ func (s *Stream) HandleBatch(records []monogo.Record) error {
 	handled := make([]monogo.Record, 0, len(records))
 	for _, rec := range records {
 		if s.IsHandling(rec.Level) {
-			handled = append(handled, rec)
+			handled = append(handled, s.ProcessRecord(rec))
 		}
 	}
 	if len(handled) == 0 {

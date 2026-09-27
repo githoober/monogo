@@ -44,3 +44,11 @@ type BatchFormatter interface {
 	Formatter
 	FormatBatch(records []Record) ([]byte, error)
 }
+
+// ProcessableHandler represents a handler equipped with its own processor pipeline.
+type ProcessableHandler interface {
+	Handler
+	Processors() []Processor
+	ProcessRecord(record Record) Record
+}
+

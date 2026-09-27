@@ -4,16 +4,19 @@ import (
 	"github.com/githoober/monogo"
 )
 
-// BaseHandler provides common functionality for handlers such as level handling and formatter management.
+// BaseHandler provides common functionality for handlers such as level handling,
+// formatter management, and per-handler processor execution.
 type BaseHandler struct {
-	level     monogo.Level
-	formatter monogo.Formatter
-	bubble    bool
+	level      monogo.Level
+	formatter  monogo.Formatter
+	bubble     bool
+	processors []monogo.Processor
 }
 
 type options struct {
 	bubble     bool
 	formatter  monogo.Formatter
+	processors []monogo.Processor
 	maxSizeMB  int
 	maxBackups int
 	maxAgeDays int
@@ -49,6 +52,18 @@ func WithFormatter(formatter monogo.Formatter) Option {
 	}
 }
 
+// WithProcessor configures one or more processors to execute on this handler before formatting/dispatching.
+func WithProcessor(processors ...monogo.Processor) Option {
+	return func(o *options) {
+		o.processors = append(o.processors, processors...)
+	}
+}
+
+// WithProcessors is an alias for WithProcessor to configure multiple processors at construction time.
+func WithProcessors(processors ...monogo.Processor) Option {
+	return WithProcessor(processors...)
+}
+
 // NewBaseHandler initializes a BaseHandler with optional configuration options.
 func NewBaseHandler(level monogo.Level, opts ...Option) BaseHandler {
 	o := defaultOptions()
@@ -57,10 +72,16 @@ func NewBaseHandler(level monogo.Level, opts ...Option) BaseHandler {
 			opt(&o)
 		}
 	}
+	var procs []monogo.Processor
+	if len(o.processors) > 0 {
+		procs = make([]monogo.Processor, len(o.processors))
+		copy(procs, o.processors)
+	}
 	return BaseHandler{
-		level:     level,
-		formatter: o.formatter,
-		bubble:    o.bubble,
+		level:      level,
+		formatter:  o.formatter,
+		bubble:     o.bubble,
+		processors: procs,
 	}
 }
 
@@ -77,4 +98,28 @@ func (b *BaseHandler) Formatter() monogo.Formatter {
 // Bubble returns whether handler allows bubbling.
 func (b *BaseHandler) Bubble() bool {
 	return b.bubble
+}
+
+// Processors returns a copy of the handler's processor pipeline.
+func (b *BaseHandler) Processors() []monogo.Processor {
+	if b == nil || len(b.processors) == 0 {
+		return nil
+	}
+	procs := make([]monogo.Processor, len(b.processors))
+	copy(procs, b.processors)
+	return procs
+}
+
+// ProcessRecord applies the handler's processor pipeline to the record.
+// If processors are present, the record is cloned first to prevent mutations from
+// leaking to subsequent handlers down the logger stack.
+func (b *BaseHandler) ProcessRecord(record monogo.Record) monogo.Record {
+	if b == nil || len(b.processors) == 0 {
+		return record
+	}
+	record = record.Clone()
+	for _, p := range b.processors {
+		record = p.Process(record)
+	}
+	return record
 }
