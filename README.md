@@ -73,12 +73,12 @@ import (
 
 func main() {
 	// Create a rotating file handler (rotates when log reaches 10MB, keeps 5 backups, retains for 30 days, compresses)
-	rotHandler := handler.NewRotatingFile("app.log", monolog.DEBUG, handler.RotatingFileOptions{
-		MaxSizeMB:  10,
-		MaxBackups: 5,
-		MaxAgeDays: 30,
-		Compress:   true,
-	})
+	rotHandler := handler.NewRotatingFile("app.log", monolog.DEBUG,
+		handler.WithMaxSize(10),
+		handler.WithMaxBackups(5),
+		handler.WithMaxAge(30),
+		handler.WithCompress(true),
+	)
 	defer rotHandler.Close()
 
 	// Optional: format as JSON

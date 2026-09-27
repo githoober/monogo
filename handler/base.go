@@ -14,8 +14,24 @@ type BaseHandler struct {
 	bubble    bool
 }
 
+type options struct {
+	bubble     bool
+	maxSizeMB  int
+	maxBackups int
+	maxAgeDays int
+	compress   bool
+}
+
+func defaultOptions() options {
+	return options{
+		bubble:     true,
+		maxSizeMB:  100,
+		maxBackups: 3,
+	}
+}
+
 // Option configures handler behavior.
-type Option func(*BaseHandler)
+type Option func(*options)
 
 // HandlerOption is an alias for Option.
 type HandlerOption = Option
@@ -23,23 +39,23 @@ type HandlerOption = Option
 // WithBubble configures whether the handler allows record bubbling down the stack.
 // Defaults to true when omitted.
 func WithBubble(bubble bool) Option {
-	return func(b *BaseHandler) {
-		b.bubble = bubble
+	return func(o *options) {
+		o.bubble = bubble
 	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.
 func NewBaseHandler(level monolog.Level, opts ...Option) BaseHandler {
-	bh := BaseHandler{
-		level:  level,
-		bubble: true,
-	}
+	o := defaultOptions()
 	for _, opt := range opts {
 		if opt != nil {
-			opt(&bh)
+			opt(&o)
 		}
 	}
-	return bh
+	return BaseHandler{
+		level:  level,
+		bubble: o.bubble,
+	}
 }
 
 // IsHandling checks if record level meets minimum level threshold.

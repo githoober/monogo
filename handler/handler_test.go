@@ -73,13 +73,16 @@ func TestRotatingFileHandler(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "rotating.log")
 
-	rotH := handler.NewRotatingFile(logPath, monolog.INFO, handler.RotatingFileOptions{
-		MaxSizeMB:  1,
-		MaxBackups: 2,
-		MaxAgeDays: 7,
-		Compress:   false,
-	})
+	rotH := handler.NewRotatingFile(logPath, monolog.INFO,
+		handler.WithMaxSize(1),
+		handler.WithMaxBackups(2),
+		handler.WithMaxAge(7),
+	)
 	defer rotH.Close()
+
+	if !rotH.Bubble() {
+		t.Errorf("expected default Bubble to be true")
+	}
 
 	logger := monolog.New("rot-app", []monolog.Handler{rotH}, nil)
 
@@ -95,6 +98,24 @@ func TestRotatingFileHandler(t *testing.T) {
 
 	if !strings.Contains(string(content), "rot-app.INFO: rotating file log message") {
 		t.Errorf("rotated log file missing expected content, got: %s", string(content))
+	}
+}
+
+func TestRotatingFileHandlerBubbling(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "rotating_bubble.log")
+
+	rotH := handler.NewRotatingFile(logPath, monolog.ERROR,
+		handler.WithBubble(false),
+		handler.WithRotation(handler.RotatingFileOptions{
+			MaxSizeMB:  1,
+			MaxBackups: 2,
+		}),
+	)
+	defer rotH.Close()
+
+	if rotH.Bubble() {
+		t.Errorf("expected Bubble to be false with WithBubble(false)")
 	}
 }
 
