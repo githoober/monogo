@@ -1,4 +1,4 @@
-package monolog_test
+package monogo_test
 
 import (
 	"context"
@@ -9,16 +9,16 @@ import (
 )
 
 type mockHandler struct {
-	minLevel monolog.Level
-	records  []monolog.Record
+	minLevel monogo.Level
+	records  []monogo.Record
 	closed   bool
 }
 
-func (m *mockHandler) IsHandling(level monolog.Level) bool {
+func (m *mockHandler) IsHandling(level monogo.Level) bool {
 	return level >= m.minLevel
 }
 
-func (m *mockHandler) Handle(record monolog.Record) error {
+func (m *mockHandler) Handle(record monogo.Record) error {
 	m.records = append(m.records, record)
 	return nil
 }
@@ -28,20 +28,29 @@ func (m *mockHandler) Close() error {
 	return nil
 }
 
+type mockBubblingHandler struct {
+	mockHandler
+	bubble bool
+}
+
+func (m *mockBubblingHandler) Bubble() bool {
+	return m.bubble
+}
+
 func TestLevelStringsAndParsing(t *testing.T) {
 	tests := []struct {
-		level monolog.Level
+		level monogo.Level
 		want  string
 	}{
-		{monolog.DEBUG, "DEBUG"},
-		{monolog.INFO, "INFO"},
-		{monolog.NOTICE, "NOTICE"},
-		{monolog.WARNING, "WARNING"},
-		{monolog.ERROR, "ERROR"},
-		{monolog.CRITICAL, "CRITICAL"},
-		{monolog.ALERT, "ALERT"},
-		{monolog.EMERGENCY, "EMERGENCY"},
-		{monolog.Level(999), "LEVEL(999)"},
+		{monogo.DEBUG, "DEBUG"},
+		{monogo.INFO, "INFO"},
+		{monogo.NOTICE, "NOTICE"},
+		{monogo.WARNING, "WARNING"},
+		{monogo.ERROR, "ERROR"},
+		{monogo.CRITICAL, "CRITICAL"},
+		{monogo.ALERT, "ALERT"},
+		{monogo.EMERGENCY, "EMERGENCY"},
+		{monogo.Level(999), "LEVEL(999)"},
 	}
 
 	for _, tt := range tests {
@@ -52,26 +61,26 @@ func TestLevelStringsAndParsing(t *testing.T) {
 
 	parseTests := []struct {
 		input string
-		want  monolog.Level
+		want  monogo.Level
 		err   bool
 	}{
-		{"debug", monolog.DEBUG, false},
-		{"INFO", monolog.INFO, false},
-		{"notice", monolog.NOTICE, false},
-		{"warning", monolog.WARNING, false},
-		{"warn", monolog.WARNING, false},
-		{"error", monolog.ERROR, false},
-		{"err", monolog.ERROR, false},
-		{"critical", monolog.CRITICAL, false},
-		{"crit", monolog.CRITICAL, false},
-		{"alert", monolog.ALERT, false},
-		{"emergency", monolog.EMERGENCY, false},
-		{"emerg", monolog.EMERGENCY, false},
-		{"invalid", monolog.DEBUG, true},
+		{"debug", monogo.DEBUG, false},
+		{"INFO", monogo.INFO, false},
+		{"notice", monogo.NOTICE, false},
+		{"warning", monogo.WARNING, false},
+		{"warn", monogo.WARNING, false},
+		{"error", monogo.ERROR, false},
+		{"err", monogo.ERROR, false},
+		{"critical", monogo.CRITICAL, false},
+		{"crit", monogo.CRITICAL, false},
+		{"alert", monogo.ALERT, false},
+		{"emergency", monogo.EMERGENCY, false},
+		{"emerg", monogo.EMERGENCY, false},
+		{"invalid", monogo.DEBUG, true},
 	}
 
 	for _, tt := range parseTests {
-		got, err := monolog.ParseLevel(tt.input)
+		got, err := monogo.ParseLevel(tt.input)
 		if tt.err && err == nil {
 			t.Errorf("expected error parsing %s, got none", tt.input)
 		}
@@ -82,17 +91,17 @@ func TestLevelStringsAndParsing(t *testing.T) {
 }
 
 func TestSlogLevelConversionInAdapter(t *testing.T) {
-	if slogadapter.ToSlogLevel(monolog.DEBUG) != -4 {
+	if slogadapter.ToSlogLevel(monogo.DEBUG) != -4 {
 		t.Errorf("expected -4 for slog.LevelDebug")
 	}
 }
 
 func TestAmbientContext(t *testing.T) {
 	ctx := context.Background()
-	ctx = monolog.WithField(ctx, "request_id", "req-123")
-	ctx = monolog.WithContext(ctx, map[string]interface{}{"tenant": "acme"})
+	ctx = monogo.WithField(ctx, "request_id", "req-123")
+	ctx = monogo.WithContext(ctx, map[string]interface{}{"tenant": "acme"})
 
-	ambientMap := monolog.FromContext(ctx)
+	ambientMap := monogo.FromContext(ctx)
 	if ambientMap["request_id"] != "req-123" {
 		t.Errorf("expected request_id req-123, got %v", ambientMap["request_id"])
 	}
@@ -100,8 +109,8 @@ func TestAmbientContext(t *testing.T) {
 		t.Errorf("expected tenant acme, got %v", ambientMap["tenant"])
 	}
 
-	h := &mockHandler{minLevel: monolog.INFO}
-	logger := monolog.New("ambient-app", []monolog.Handler{h}, nil)
+	h := &mockHandler{minLevel: monogo.INFO}
+	logger := monogo.New("ambient-app", []monogo.Handler{h}, nil)
 
 	err := logger.InfoContext(ctx, "processing order", map[string]interface{}{"order_id": 99})
 	if err != nil {
@@ -125,8 +134,8 @@ func TestAmbientContext(t *testing.T) {
 }
 
 func TestChildLoggerWithNameAndChannel(t *testing.T) {
-	h := &mockHandler{minLevel: monolog.INFO}
-	parent := monolog.New("parent-channel", []monolog.Handler{h}, nil)
+	h := &mockHandler{minLevel: monogo.INFO}
+	parent := monogo.New("parent-channel", []monogo.Handler{h}, nil)
 
 	childName := parent.WithName("child-channel")
 	if childName.Name() != "child-channel" {
@@ -148,8 +157,8 @@ func TestChildLoggerWithNameAndChannel(t *testing.T) {
 }
 
 func TestLoggerPipeline(t *testing.T) {
-	h := &mockHandler{minLevel: monolog.INFO}
-	logger := monolog.New("app", []monolog.Handler{h}, nil)
+	h := &mockHandler{minLevel: monogo.INFO}
+	logger := monogo.New("app", []monogo.Handler{h}, nil)
 
 	if logger.Name() != "app" {
 		t.Errorf("expected channel app, got %s", logger.Name())
@@ -183,7 +192,7 @@ func TestLoggerPipeline(t *testing.T) {
 	}
 
 	// Test Push/Pop Handlers
-	h2 := &mockHandler{minLevel: monolog.DEBUG}
+	h2 := &mockHandler{minLevel: monogo.DEBUG}
 	logger.PushHandler(h2)
 
 	if err := logger.Debug("debug msg 2"); err != nil {
@@ -217,3 +226,69 @@ func TestLoggerPipeline(t *testing.T) {
 		t.Errorf("expected handler to be closed")
 	}
 }
+
+func TestHandlerBubblingStopsPropagation(t *testing.T) {
+	// Top handler: handles ERROR+, bubble = false
+	topHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monogo.ERROR},
+		bubble:      false,
+	}
+
+	// Bottom handler: handles DEBUG+, bubble = true
+	bottomHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monogo.DEBUG},
+		bubble:      true,
+	}
+
+	logger := monogo.New("bubble-test", []monogo.Handler{topHandler, bottomHandler}, nil)
+
+	// 1. Log INFO: topHandler does NOT handle it, so it should bypass topHandler and reach bottomHandler
+	if err := logger.Info("info message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 0 {
+		t.Errorf("top handler should not have received info message")
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Fatalf("bottom handler should have received info message, got %d", len(bottomHandler.records))
+	}
+
+	// 2. Log ERROR: topHandler handles it and bubble = false, so bottomHandler should NOT receive it
+	if err := logger.Error("error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 1 {
+		t.Fatalf("top handler should have received error message, got %d", len(topHandler.records))
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Errorf("bottom handler should NOT have received error message due to bubble=false, got %d", len(bottomHandler.records))
+	}
+}
+
+func TestHandlerBubblingContinuesWhenTrue(t *testing.T) {
+	// Top handler: handles ERROR+, bubble = true
+	topHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monogo.ERROR},
+		bubble:      true,
+	}
+
+	// Bottom handler: handles DEBUG+, bubble = true
+	bottomHandler := &mockBubblingHandler{
+		mockHandler: mockHandler{minLevel: monogo.DEBUG},
+		bubble:      true,
+	}
+
+	logger := monogo.New("bubble-test-continue", []monogo.Handler{topHandler, bottomHandler}, nil)
+
+	// Log ERROR: both handlers handle it because topHandler has bubble = true
+	if err := logger.Error("error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(topHandler.records) != 1 {
+		t.Fatalf("expected top handler to have 1 record, got %d", len(topHandler.records))
+	}
+	if len(bottomHandler.records) != 1 {
+		t.Fatalf("expected bottom handler to have 1 record, got %d", len(bottomHandler.records))
+	}
+}
+

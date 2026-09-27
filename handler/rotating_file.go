@@ -13,27 +13,66 @@ type RotatingFileOptions struct {
 	Compress   bool // Whether to compress rotated log files with gzip
 }
 
-// NewRotatingFile creates a Stream handler configured with rolling/rotating file support powered by lumberjack.
-func NewRotatingFile(filename string, level monolog.Level, opts ...RotatingFileOptions) *Stream {
-	var opt RotatingFileOptions
-	if len(opts) > 0 {
-		opt = opts[0]
+// WithRotation configures file rotation using a RotatingFileOptions struct.
+func WithRotation(opts RotatingFileOptions) Option {
+	return func(o *options) {
+		if opts.MaxSizeMB > 0 {
+			o.maxSizeMB = opts.MaxSizeMB
+		}
+		if opts.MaxBackups > 0 {
+			o.maxBackups = opts.MaxBackups
+		}
+		if opts.MaxAgeDays > 0 {
+			o.maxAgeDays = opts.MaxAgeDays
+		}
+		o.compress = opts.Compress
 	}
+}
 
-	if opt.MaxSizeMB <= 0 {
-		opt.MaxSizeMB = 100
+// WithMaxSize sets the maximum file size in megabytes before rotation (default 100MB).
+func WithMaxSize(maxSizeMB int) Option {
+	return func(o *options) {
+		o.maxSizeMB = maxSizeMB
 	}
-	if opt.MaxBackups <= 0 {
-		opt.MaxBackups = 3
+}
+
+// WithMaxBackups sets the maximum number of old log files to retain (default 3).
+func WithMaxBackups(maxBackups int) Option {
+	return func(o *options) {
+		o.maxBackups = maxBackups
+	}
+}
+
+// WithMaxAge sets the maximum age in days before old log files are deleted.
+func WithMaxAge(maxAgeDays int) Option {
+	return func(o *options) {
+		o.maxAgeDays = maxAgeDays
+	}
+}
+
+// WithCompress sets whether rotated log files should be compressed with gzip.
+func WithCompress(compress bool) Option {
+	return func(o *options) {
+		o.compress = compress
+	}
+}
+
+// NewRotatingFile creates a Stream handler configured with rolling/rotating file support powered by lumberjack.
+func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *Stream {
+	o := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
 	}
 
 	lj := &lumberjack.Logger{
 		Filename:   filename,
-		MaxSize:    opt.MaxSizeMB,
-		MaxBackups: opt.MaxBackups,
-		MaxAge:     opt.MaxAgeDays,
-		Compress:   opt.Compress,
+		MaxSize:    o.maxSizeMB,
+		MaxBackups: o.maxBackups,
+		MaxAge:     o.maxAgeDays,
+		Compress:   o.compress,
 	}
 
-	return NewStream(lj, level)
+	return NewStream(lj, level, opts...)
 }

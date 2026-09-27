@@ -1,10 +1,17 @@
-package monolog
+package monogo
 
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
 	IsHandling(level Level) bool
 	Handle(record Record) error
 	Close() error
+}
+
+// Bubbler allows a handler to control whether a record bubbles down through the handler stack.
+// When a handler processes a record and its Bubble() method returns false,
+// the logger stops passing the record to subsequent handlers in the stack.
+type Bubbler interface {
+	Bubble() bool
 }
 
 // Processor enriches or modifies a log record before formatting and handling.

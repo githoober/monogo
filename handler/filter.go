@@ -7,33 +7,33 @@ import (
 // Filter wraps a handler and filters records based on level or predicate function.
 type Filter struct {
 	BaseHandler
-	handler   monolog.Handler
-	minLevel  monolog.Level
-	maxLevel  monolog.Level
-	predicate func(monolog.Record) bool
+	handler   monogo.Handler
+	minLevel  monogo.Level
+	maxLevel  monogo.Level
+	predicate func(monogo.Record) bool
 }
 
-// NewFilter creates a Filter handler for level ranges [minLevel, maxLevel].
-func NewFilter(handler monolog.Handler, minLevel, maxLevel monolog.Level) *Filter {
+// NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional configuration options.
+func NewFilter(handler monogo.Handler, minLevel, maxLevel monogo.Level, opts ...Option) *Filter {
 	return &Filter{
-		BaseHandler: NewBaseHandler(minLevel, true),
+		BaseHandler: NewBaseHandler(minLevel, opts...),
 		handler:     handler,
 		minLevel:    minLevel,
 		maxLevel:    maxLevel,
 	}
 }
 
-// NewFilterFunc creates a Filter handler using custom predicate function.
-func NewFilterFunc(handler monolog.Handler, predicate func(monolog.Record) bool) *Filter {
+// NewFilterFunc creates a Filter handler using custom predicate function with optional configuration options.
+func NewFilterFunc(handler monogo.Handler, predicate func(monogo.Record) bool, opts ...Option) *Filter {
 	return &Filter{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
 		handler:     handler,
 		predicate:   predicate,
 	}
 }
 
 // IsHandling checks if wrapped handler accepts record and record meets filter condition.
-func (f *Filter) IsHandling(level monolog.Level) bool {
+func (f *Filter) IsHandling(level monogo.Level) bool {
 	if f.predicate == nil {
 		if level < f.minLevel || level > f.maxLevel {
 			return false
@@ -43,7 +43,7 @@ func (f *Filter) IsHandling(level monolog.Level) bool {
 }
 
 // Handle routes handling to inner handler if predicate/level check succeeds.
-func (f *Filter) Handle(record monolog.Record) error {
+func (f *Filter) Handle(record monogo.Record) error {
 	if f.predicate != nil {
 		if !f.predicate(record) {
 			return nil

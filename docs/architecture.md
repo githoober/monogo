@@ -5,7 +5,7 @@ This document outlines the primary architectural decisions behind **Monogo** (`g
 ## 1. Generic, Decoupled Core Architecture
 
 ### Decision
-The core `monolog` package is strictly backend-agnostic. It defines generic interfaces (`Handler`, `Processor`, `Formatter`) and data structures (`Record`, `Level`) without hard dependencies on any external logging library or Go standard library adapters.
+The core `monogo` package is strictly backend-agnostic. It defines generic interfaces (`Handler`, `Processor`, `Formatter`) and data structures (`Record`, `Level`) without hard dependencies on any external logging library or Go standard library adapters.
 
 ### Rationale
 In PHP Monolog, handlers dictate how log records are handled and emitted. In Go, applications use various backends (`log/slog`, `zerolog`, `zap`, etc.). Decoupling the core allows Monogo to serve as a universal logging facade and pipeline, enabling log records to be formatted and dispatched to any backend seamlessly.
@@ -16,7 +16,7 @@ In PHP Monolog, handlers dictate how log records are handled and emitted. In Go,
 
 ### Decision
 Framework-specific integrations reside in separate subpackages under `adapter/`:
-- **`adapter/slogadapter`**: Provides `SlogHandler` (sends Monogo records to any `slog.Handler`) and `MonologSlogBridge` (implements `slog.Handler` using Monogo as backend).
+- **`adapter/slogadapter`**: Provides `SlogHandler` (sends Monogo records to any `slog.Handler`) and `MonogoSlogBridge` (implements `slog.Handler` using Monogo as backend).
 - **`adapter/zerologadapter`**: Provides `ZerologHandler` (routes Monogo records to `zerolog.Logger`).
 
 ### Rationale
@@ -27,9 +27,9 @@ Subpackages keep dependencies isolated so consumers importing only core Monogo d
 ## 3. Ambient Context Values via `context.Context`
 
 ### Decision
-Ambient contextual fields (such as `request_id`, `trace_id`, or `tenant_id`) can be stored in Go's standard `context.Context` using `monolog.WithContext(ctx, fields)` or `monolog.WithField(ctx, key, value)`.
+Ambient contextual fields (such as `request_id`, `trace_id`, or `tenant_id`) can be stored in Go's standard `context.Context` using `monogo.WithContext(ctx, fields)` or `monogo.WithField(ctx, key, value)`.
 
-When context-aware log methods are invoked (e.g. `logger.InfoContext(ctx, ...)`), ambient fields are automatically extracted via `monolog.FromContext(ctx)` and merged into the log `Record.Context`.
+When context-aware log methods are invoked (e.g. `logger.InfoContext(ctx, ...)`), ambient fields are automatically extracted via `monogo.FromContext(ctx)` and merged into the log `Record.Context`.
 
 ### Rationale
 In Go, `context.Context` is the standard mechanism for passing request-scoped values across API boundaries and goroutines. Decoupling request-scoped ambient fields from the `Logger` instance avoids needing to recreate logger objects on every request while ensuring log entries automatically carry request metadata.
@@ -68,5 +68,7 @@ Built-in handlers include:
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
 
+Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
+
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers.

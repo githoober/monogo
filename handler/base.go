@@ -1,50 +1,76 @@
 package handler
 
 import (
-	"sync"
-
 	"github.com/githoober/monogo"
 )
 
 // BaseHandler provides common functionality for handlers such as level handling and formatter management.
 type BaseHandler struct {
-	mu        sync.RWMutex
-	level     monolog.Level
-	formatter monolog.Formatter
+	level     monogo.Level
+	formatter monogo.Formatter
 	bubble    bool
 }
 
-// NewBaseHandler initializes a BaseHandler.
-func NewBaseHandler(level monolog.Level, bubble bool) BaseHandler {
+type options struct {
+	bubble     bool
+	formatter  monogo.Formatter
+	maxSizeMB  int
+	maxBackups int
+	maxAgeDays int
+	compress   bool
+}
+
+func defaultOptions() options {
+	return options{
+		bubble:     true,
+		maxSizeMB:  100,
+		maxBackups: 3,
+	}
+}
+
+// Option configures handler behavior.
+type Option func(*options)
+
+// HandlerOption is an alias for Option.
+type HandlerOption = Option
+
+// WithBubble configures whether the handler allows record bubbling down the stack.
+// Defaults to true when omitted.
+func WithBubble(bubble bool) Option {
+	return func(o *options) {
+		o.bubble = bubble
+	}
+}
+
+// WithFormatter configures the handler's formatter at construction time.
+func WithFormatter(formatter monogo.Formatter) Option {
+	return func(o *options) {
+		o.formatter = formatter
+	}
+}
+
+// NewBaseHandler initializes a BaseHandler with optional configuration options.
+func NewBaseHandler(level monogo.Level, opts ...Option) BaseHandler {
+	o := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
 	return BaseHandler{
-		level:  level,
-		bubble: bubble,
+		level:     level,
+		formatter: o.formatter,
+		bubble:    o.bubble,
 	}
 }
 
 // IsHandling checks if record level meets minimum level threshold.
-func (b *BaseHandler) IsHandling(level monolog.Level) bool {
+func (b *BaseHandler) IsHandling(level monogo.Level) bool {
 	return level >= b.level
 }
 
-// SetLevel updates the minimum handling level.
-func (b *BaseHandler) SetLevel(level monolog.Level) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.level = level
-}
-
-// SetFormatter sets the formatter.
-func (b *BaseHandler) SetFormatter(formatter monolog.Formatter) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.formatter = formatter
-}
-
 // Formatter gets the current formatter.
-func (b *BaseHandler) Formatter() monolog.Formatter {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+func (b *BaseHandler) Formatter() monogo.Formatter {
 	return b.formatter
 }
 

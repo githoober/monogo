@@ -15,18 +15,20 @@ type Stream struct {
 	mu     sync.Mutex
 }
 
-// NewStream creates a Stream handler.
-func NewStream(w io.Writer, level monolog.Level) *Stream {
+// NewStream creates a Stream handler with optional configuration options (defaults: bubble=true).
+func NewStream(w io.Writer, level monogo.Level, opts ...Option) *Stream {
 	h := &Stream{
-		BaseHandler: NewBaseHandler(level, true),
+		BaseHandler: NewBaseHandler(level, opts...),
 		writer:      w,
 	}
-	h.SetFormatter(formatter.NewLine("", ""))
+	if h.formatter == nil {
+		h.formatter = formatter.NewLine("", "")
+	}
 	return h
 }
 
 // Handle formats and writes the record to stream writer.
-func (s *Stream) Handle(record monolog.Record) error {
+func (s *Stream) Handle(record monogo.Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

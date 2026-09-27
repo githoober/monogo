@@ -1,4 +1,4 @@
-package monolog
+package monogo
 
 import (
 	"context"
@@ -159,6 +159,9 @@ func (l *Logger) LogContext(ctx context.Context, level Level, msg string, ctxMap
 		if h.IsHandling(level) {
 			if err := h.Handle(record); err != nil {
 				return err
+			}
+			if bubbler, ok := h.(Bubbler); ok && !bubbler.Bubble() {
+				break
 			}
 		}
 	}

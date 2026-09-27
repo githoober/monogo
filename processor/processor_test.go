@@ -8,9 +8,9 @@ import (
 )
 
 func TestProcessors(t *testing.T) {
-	rec := monolog.Record{
+	rec := monogo.Record{
 		Message: "test",
-		Level:   monolog.INFO,
+		Level:   monogo.INFO,
 	}
 
 	// Test Tag

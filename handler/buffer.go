@@ -9,26 +9,26 @@ import (
 // Buffer buffers records until a capacity limit is reached or flush Level is triggered.
 type Buffer struct {
 	BaseHandler
-	handler     monolog.Handler
+	handler     monogo.Handler
 	bufferLimit int
-	flushLevel  monolog.Level
-	buffer      []monolog.Record
+	flushLevel  monogo.Level
+	buffer      []monogo.Record
 	mu          sync.Mutex
 }
 
-// NewBuffer creates a Buffer handler.
-func NewBuffer(handler monolog.Handler, bufferLimit int, flushLevel monolog.Level) *Buffer {
+// NewBuffer creates a Buffer handler with optional configuration options (defaults: bubble=true).
+func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level, opts ...Option) *Buffer {
 	return &Buffer{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
 		handler:     handler,
 		bufferLimit: bufferLimit,
 		flushLevel:  flushLevel,
-		buffer:      make([]monolog.Record, 0, bufferLimit),
+		buffer:      make([]monogo.Record, 0, bufferLimit),
 	}
 }
 
 // Handle buffers record and flushes if conditions are met.
-func (b *Buffer) Handle(record monolog.Record) error {
+func (b *Buffer) Handle(record monogo.Record) error {
 	b.mu.Lock()
 	b.buffer = append(b.buffer, record)
 	shouldFlush := record.Level >= b.flushLevel || (b.bufferLimit > 0 && len(b.buffer) >= b.bufferLimit)
@@ -44,7 +44,7 @@ func (b *Buffer) Handle(record monolog.Record) error {
 func (b *Buffer) Flush() error {
 	b.mu.Lock()
 	records := b.buffer
-	b.buffer = make([]monolog.Record, 0, b.bufferLimit)
+	b.buffer = make([]monogo.Record, 0, b.bufferLimit)
 	b.mu.Unlock()
 
 	var lastErr error

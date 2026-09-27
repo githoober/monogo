@@ -1,4 +1,4 @@
-package monolog
+package monogo
 
 import (
 	"time"

@@ -7,19 +7,19 @@ import (
 // Group forwards log records to a slice of handlers.
 type Group struct {
 	BaseHandler
-	handlers []monolog.Handler
+	handlers []monogo.Handler
 }
 
-// NewGroup creates a Group handler.
-func NewGroup(handlers []monolog.Handler) *Group {
+// NewGroup creates a Group handler with optional configuration options.
+func NewGroup(handlers []monogo.Handler, opts ...Option) *Group {
 	return &Group{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
 		handlers:    handlers,
 	}
 }
 
 // IsHandling returns true if any nested handler handles the log level.
-func (g *Group) IsHandling(level monolog.Level) bool {
+func (g *Group) IsHandling(level monogo.Level) bool {
 	for _, h := range g.handlers {
 		if h.IsHandling(level) {
 			return true
@@ -29,7 +29,7 @@ func (g *Group) IsHandling(level monolog.Level) bool {
 }
 
 // Handle sends record to all sub-handlers that handle the record level.
-func (g *Group) Handle(record monolog.Record) error {
+func (g *Group) Handle(record monogo.Record) error {
 	var lastErr error
 	for _, h := range g.handlers {
 		if h.IsHandling(record.Level) {

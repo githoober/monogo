@@ -14,9 +14,9 @@ func TestLineFormatter(t *testing.T) {
 	f := formatter.NewLine("", "")
 	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	rec := monolog.Record{
+	rec := monogo.Record{
 		Message: "test message",
-		Level:   monolog.INFO,
+		Level:   monogo.INFO,
 		Channel: "main",
 		Time:    now,
 		Context: map[string]interface{}{"user_id": 42},
@@ -47,9 +47,9 @@ func TestJSONFormatter(t *testing.T) {
 	f := formatter.NewJSON("")
 	now := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
 
-	rec := monolog.Record{
+	rec := monogo.Record{
 		Message: "json test message",
-		Level:   monolog.ERROR,
+		Level:   monogo.ERROR,
 		Channel: "api",
 		Time:    now,
 		Context: map[string]interface{}{"error": "db timeout"},

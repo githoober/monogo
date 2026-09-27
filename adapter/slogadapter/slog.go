@@ -8,29 +8,75 @@ import (
 	"github.com/githoober/monogo/handler"
 )
 
-func ToSlogLevel(l monolog.Level) slog.Level {
+// Custom slog levels corresponding to RFC 5424 / monogo levels not natively defined in log/slog.
+// Slog uses 4-step spacing between standard levels (Debug=-4, Info=0, Warn=4, Error=8),
+// which explicitly supports defining custom intermediate and extended levels.
+const (
+	LevelNotice    slog.Level = slog.LevelInfo + 2  // 2 (between Info and Warn)
+	LevelCritical  slog.Level = slog.LevelError + 4 // 12 (above Error)
+	LevelAlert     slog.Level = slog.LevelError + 8 // 16 (above Critical)
+	LevelEmergency slog.Level = slog.LevelError + 12 // 20 (above Alert)
+)
+
+// ReplaceLevelAttr is a slog ReplaceAttr helper that formats custom RFC 5424 levels
+// (Notice, Critical, Alert, Emergency) as human-readable string values instead of "INFO+2", etc.
+func ReplaceLevelAttr(groups []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.LevelKey {
+		if lvl, ok := a.Value.Any().(slog.Level); ok {
+			switch lvl {
+			case LevelNotice:
+				a.Value = slog.StringValue("NOTICE")
+			case LevelCritical:
+				a.Value = slog.StringValue("CRITICAL")
+			case LevelAlert:
+				a.Value = slog.StringValue("ALERT")
+			case LevelEmergency:
+				a.Value = slog.StringValue("EMERGENCY")
+			}
+		}
+	}
+	return a
+}
+
+func ToSlogLevel(l monogo.Level) slog.Level {
 	switch {
-	case l < monolog.INFO:
+	case l < monogo.INFO:
 		return slog.LevelDebug
-	case l < monolog.WARNING:
+	case l < monogo.NOTICE:
 		return slog.LevelInfo
-	case l < monolog.ERROR:
+	case l < monogo.WARNING:
+		return LevelNotice
+	case l < monogo.ERROR:
 		return slog.LevelWarn
-	default:
+	case l < monogo.CRITICAL:
 		return slog.LevelError
+	case l < monogo.ALERT:
+		return LevelCritical
+	case l < monogo.EMERGENCY:
+		return LevelAlert
+	default:
+		return LevelEmergency
 	}
 }
 
-func FromSlogLevel(sl slog.Level) monolog.Level {
+func FromSlogLevel(sl slog.Level) monogo.Level {
 	switch {
 	case sl < slog.LevelInfo:
-		return monolog.DEBUG
+		return monogo.DEBUG
+	case sl < LevelNotice:
+		return monogo.INFO
 	case sl < slog.LevelWarn:
-		return monolog.INFO
+		return monogo.NOTICE
 	case sl < slog.LevelError:
-		return monolog.WARNING
+		return monogo.WARNING
+	case sl < LevelCritical:
+		return monogo.ERROR
+	case sl < LevelAlert:
+		return monogo.CRITICAL
+	case sl < LevelEmergency:
+		return monogo.ALERT
 	default:
-		return monolog.ERROR
+		return monogo.EMERGENCY
 	}
 }
 
@@ -39,14 +85,15 @@ type SlogHandler struct {
 	slogHandler slog.Handler
 }
 
-func NewSlogHandler(h slog.Handler, minLevel monolog.Level) *SlogHandler {
+// NewSlogHandler creates a SlogHandler with optional configuration options.
+func NewSlogHandler(h slog.Handler, minLevel monogo.Level, opts ...handler.Option) *SlogHandler {
 	return &SlogHandler{
-		BaseHandler: handler.NewBaseHandler(minLevel, true),
+		BaseHandler: handler.NewBaseHandler(minLevel, opts...),
 		slogHandler: h,
 	}
 }
 
-func (s *SlogHandler) Handle(record monolog.Record) error {
+func (s *SlogHandler) Handle(record monogo.Record) error {
 	slogLevel := ToSlogLevel(record.Level)
 	if !s.slogHandler.Enabled(context.Background(), slogLevel) {
 		return nil
@@ -55,6 +102,10 @@ func (s *SlogHandler) Handle(record monolog.Record) error {
 	attrs := make([]slog.Attr, 0, len(record.Context)+len(record.Extra)+1)
 	if record.Channel != "" {
 		attrs = append(attrs, slog.String("channel", record.Channel))
+	}
+
+	if record.Level == monogo.NOTICE || record.Level >= monogo.CRITICAL {
+		attrs = append(attrs, slog.String("severity", record.Level.String()))
 	}
 
 	for k, v := range record.Context {
@@ -75,23 +126,31 @@ func (s *SlogHandler) Close() error {
 	return nil
 }
 
-type MonologSlogBridge struct {
-	logger *monolog.Logger
+type MonogoSlogBridge struct {
+	logger *monogo.Logger
 	attrs  []slog.Attr
 	group  string
 }
 
-func NewMonologSlogBridge(logger *monolog.Logger) *MonologSlogBridge {
-	return &MonologSlogBridge{
+func NewMonogoSlogBridge(logger *monogo.Logger) *MonogoSlogBridge {
+	return &MonogoSlogBridge{
 		logger: logger,
 	}
 }
 
-func (m *MonologSlogBridge) Enabled(ctx context.Context, level slog.Level) bool {
+// MonologSlogBridge is an alias for MonogoSlogBridge for backwards compatibility.
+type MonologSlogBridge = MonogoSlogBridge
+
+// NewMonologSlogBridge creates a MonogoSlogBridge (alias for backwards compatibility).
+func NewMonologSlogBridge(logger *monogo.Logger) *MonogoSlogBridge {
+	return NewMonogoSlogBridge(logger)
+}
+
+func (m *MonogoSlogBridge) Enabled(ctx context.Context, level slog.Level) bool {
 	return m.logger.IsHandling(FromSlogLevel(level))
 }
 
-func (m *MonologSlogBridge) Handle(ctx context.Context, r slog.Record) error {
+func (m *MonogoSlogBridge) Handle(ctx context.Context, r slog.Record) error {
 	ctxMap := make(map[string]interface{})
 
 	for _, attr := range m.attrs {
@@ -115,19 +174,19 @@ func (m *MonologSlogBridge) addAttrToMap(target map[string]interface{}, attr slo
 	target[key] = attr.Value.Any()
 }
 
-func (m *MonologSlogBridge) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (m *MonogoSlogBridge) WithAttrs(attrs []slog.Attr) slog.Handler {
 	newAttrs := make([]slog.Attr, len(m.attrs)+len(attrs))
 	copy(newAttrs, m.attrs)
 	copy(newAttrs[len(m.attrs):], attrs)
 
-	return &MonologSlogBridge{
+	return &MonogoSlogBridge{
 		logger: m.logger,
 		attrs:  newAttrs,
 		group:  m.group,
 	}
 }
 
-func (m *MonologSlogBridge) WithGroup(name string) slog.Handler {
+func (m *MonogoSlogBridge) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return m
 	}
@@ -136,7 +195,7 @@ func (m *MonologSlogBridge) WithGroup(name string) slog.Handler {
 		newGroup = m.group + "." + name
 	}
 
-	return &MonologSlogBridge{
+	return &MonogoSlogBridge{
 		logger: m.logger,
 		attrs:  m.attrs,
 		group:  newGroup,
