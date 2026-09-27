@@ -13,20 +13,20 @@ type Filter struct {
 	predicate func(monolog.Record) bool
 }
 
-// NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional bubbling control (defaults to true).
-func NewFilter(handler monolog.Handler, minLevel, maxLevel monolog.Level, bubble ...bool) *Filter {
+// NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional configuration options.
+func NewFilter(handler monolog.Handler, minLevel, maxLevel monolog.Level, opts ...Option) *Filter {
 	return &Filter{
-		BaseHandler: NewBaseHandler(minLevel, bubble...),
+		BaseHandler: NewBaseHandler(minLevel, opts...),
 		handler:     handler,
 		minLevel:    minLevel,
 		maxLevel:    maxLevel,
 	}
 }
 
-// NewFilterFunc creates a Filter handler using custom predicate function with optional bubbling control (defaults to true).
-func NewFilterFunc(handler monolog.Handler, predicate func(monolog.Record) bool, bubble ...bool) *Filter {
+// NewFilterFunc creates a Filter handler using custom predicate function with optional configuration options.
+func NewFilterFunc(handler monolog.Handler, predicate func(monolog.Record) bool, opts ...Option) *Filter {
 	return &Filter{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, bubble...),
+		BaseHandler: NewBaseHandler(monolog.DEBUG, opts...),
 		handler:     handler,
 		predicate:   predicate,
 	}

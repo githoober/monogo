@@ -14,16 +14,32 @@ type BaseHandler struct {
 	bubble    bool
 }
 
-// NewBaseHandler initializes a BaseHandler with optional bubble control (defaults to true).
-func NewBaseHandler(level monolog.Level, bubble ...bool) BaseHandler {
-	b := true
-	if len(bubble) > 0 {
-		b = bubble[0]
+// Option configures handler behavior.
+type Option func(*BaseHandler)
+
+// HandlerOption is an alias for Option.
+type HandlerOption = Option
+
+// WithBubble configures whether the handler allows record bubbling down the stack.
+// Defaults to true when omitted.
+func WithBubble(bubble bool) Option {
+	return func(b *BaseHandler) {
+		b.bubble = bubble
 	}
-	return BaseHandler{
+}
+
+// NewBaseHandler initializes a BaseHandler with optional configuration options.
+func NewBaseHandler(level monolog.Level, opts ...Option) BaseHandler {
+	bh := BaseHandler{
 		level:  level,
-		bubble: b,
+		bubble: true,
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&bh)
+		}
+	}
+	return bh
 }
 
 // IsHandling checks if record level meets minimum level threshold.

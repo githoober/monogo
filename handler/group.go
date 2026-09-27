@@ -10,10 +10,10 @@ type Group struct {
 	handlers []monolog.Handler
 }
 
-// NewGroup creates a Group handler with optional bubbling control (defaults to true).
-func NewGroup(handlers []monolog.Handler, bubble ...bool) *Group {
+// NewGroup creates a Group handler with optional configuration options.
+func NewGroup(handlers []monolog.Handler, opts ...Option) *Group {
 	return &Group{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, bubble...),
+		BaseHandler: NewBaseHandler(monolog.DEBUG, opts...),
 		handlers:    handlers,
 	}
 }

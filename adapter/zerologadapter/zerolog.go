@@ -11,9 +11,10 @@ type ZerologHandler struct {
 	logger zerolog.Logger
 }
 
-func NewZerologHandler(l zerolog.Logger, minLevel monolog.Level, bubble ...bool) *ZerologHandler {
+// NewZerologHandler creates a ZerologHandler with optional configuration options.
+func NewZerologHandler(l zerolog.Logger, minLevel monolog.Level, opts ...handler.Option) *ZerologHandler {
 	return &ZerologHandler{
-		BaseHandler: handler.NewBaseHandler(minLevel, bubble...),
+		BaseHandler: handler.NewBaseHandler(minLevel, opts...),
 		logger:      l,
 	}
 }

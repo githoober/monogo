@@ -15,10 +15,10 @@ type Stream struct {
 	mu     sync.Mutex
 }
 
-// NewStream creates a Stream handler with optional bubbling control (defaults to true).
-func NewStream(w io.Writer, level monolog.Level, bubble ...bool) *Stream {
+// NewStream creates a Stream handler with optional configuration options (defaults: bubble=true).
+func NewStream(w io.Writer, level monolog.Level, opts ...Option) *Stream {
 	h := &Stream{
-		BaseHandler: NewBaseHandler(level, bubble...),
+		BaseHandler: NewBaseHandler(level, opts...),
 		writer:      w,
 	}
 	h.SetFormatter(formatter.NewLine("", ""))

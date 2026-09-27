@@ -41,5 +41,5 @@ func NewRotatingFile(filename string, level monolog.Level, opts ...RotatingFileO
 		Compress:   opt.Compress,
 	}
 
-	return NewStream(lj, level, bubble)
+	return NewStream(lj, level, WithBubble(bubble))
 }

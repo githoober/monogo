@@ -190,16 +190,16 @@ func TestNullAndTestHandler(t *testing.T) {
 }
 
 func TestBaseHandlerBubble(t *testing.T) {
-	// Default bubbling (no bubble arg)
+	// Default bubbling (no options)
 	bhDefault := handler.NewBaseHandler(monolog.INFO)
 	if !bhDefault.Bubble() {
 		t.Errorf("expected default bubble to be true")
 	}
 
-	// Explicit bubbling = false at construction time
-	bhNoBubble := handler.NewBaseHandler(monolog.INFO, false)
+	// Explicit bubbling = false using WithBubble option
+	bhNoBubble := handler.NewBaseHandler(monolog.INFO, handler.WithBubble(false))
 	if bhNoBubble.Bubble() {
-		t.Errorf("expected bubble to be false when constructed with false")
+		t.Errorf("expected bubble to be false when configured with WithBubble(false)")
 	}
 }
 
@@ -207,8 +207,8 @@ func TestStreamHandlerBubbling(t *testing.T) {
 	var buf1 bytes.Buffer
 	var buf2 bytes.Buffer
 
-	// sh1 configured with bubble = false at construction time
-	sh1 := handler.NewStream(&buf1, monolog.ERROR, false)
+	// sh1 configured with bubble = false using WithBubble option
+	sh1 := handler.NewStream(&buf1, monolog.ERROR, handler.WithBubble(false))
 	sh2 := handler.NewStream(&buf2, monolog.DEBUG)
 
 	logger := monolog.New("bubble-stream-test", []monolog.Handler{sh1, sh2}, nil)

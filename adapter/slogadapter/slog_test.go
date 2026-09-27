@@ -61,3 +61,46 @@ func TestMonologSlogBridge(t *testing.T) {
 		t.Errorf("unexpected context val: %v", rec.Context["key"])
 	}
 }
+
+func TestSlogHandlerBubbling(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	slogH1 := slog.NewTextHandler(&buf1, &slog.HandlerOptions{Level: slog.LevelError})
+	slogH2 := slog.NewTextHandler(&buf2, &slog.HandlerOptions{Level: slog.LevelDebug})
+
+	h1 := slogadapter.NewSlogHandler(slogH1, monolog.ERROR, handler.WithBubble(false))
+	h2 := slogadapter.NewSlogHandler(slogH2, monolog.DEBUG)
+
+	if !h2.Bubble() {
+		t.Errorf("expected h2 default bubble to be true")
+	}
+	if h1.Bubble() {
+		t.Errorf("expected h1 bubble to be false with WithBubble(false)")
+	}
+
+	logger := monolog.New("slog-bubble-test", []monolog.Handler{h1, h2}, nil)
+
+	// INFO: h1 ignores, h2 receives
+	if err := logger.Info("info message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if buf1.Len() != 0 {
+		t.Errorf("expected buf1 to be empty, got: %s", buf1.String())
+	}
+	if !strings.Contains(buf2.String(), "info message") {
+		t.Errorf("expected buf2 to contain info message, got: %s", buf2.String())
+	}
+
+	buf2.Reset()
+
+	// ERROR: h1 handles and halts propagation (bubble = false)
+	if err := logger.Error("error message"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(buf1.String(), "error message") {
+		t.Errorf("expected buf1 to contain error message, got: %s", buf1.String())
+	}
+	if buf2.Len() != 0 {
+		t.Errorf("expected buf2 to be empty due to bubble=false on h1, got: %s", buf2.String())
+	}
+}
+
