@@ -15,9 +15,9 @@ import (
 func TestSlogHandler(t *testing.T) {
 	var buf bytes.Buffer
 	slogH := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
-	monoH := slogadapter.NewSlogHandler(slogH, monolog.DEBUG)
+	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG)
 
-	logger := monolog.New("test-channel", []monolog.Handler{monoH}, nil)
+	logger := monogo.New("test-channel", []monogo.Handler{monoH}, nil)
 
 	err := logger.Info("hello slog backend", map[string]interface{}{"user": "alice"})
 	if err != nil {
@@ -37,8 +37,8 @@ func TestSlogHandler(t *testing.T) {
 }
 
 func TestMonologSlogBridge(t *testing.T) {
-	testH := handler.NewTest(monolog.DEBUG)
-	monoLogger := monolog.New("app-channel", []monolog.Handler{testH}, nil)
+	testH := handler.NewTest(monogo.DEBUG)
+	monoLogger := monogo.New("app-channel", []monogo.Handler{testH}, nil)
 
 	slogBridge := slogadapter.NewMonologSlogBridge(monoLogger)
 	slogger := slog.New(slogBridge)
@@ -54,7 +54,7 @@ func TestMonologSlogBridge(t *testing.T) {
 	if rec.Message != "hello from slog frontend" {
 		t.Errorf("unexpected message: %s", rec.Message)
 	}
-	if rec.Level != monolog.INFO {
+	if rec.Level != monogo.INFO {
 		t.Errorf("unexpected level: %v", rec.Level)
 	}
 	if rec.Context["key"] != "val" {
@@ -67,8 +67,8 @@ func TestSlogHandlerBubbling(t *testing.T) {
 	slogH1 := slog.NewTextHandler(&buf1, &slog.HandlerOptions{Level: slog.LevelError})
 	slogH2 := slog.NewTextHandler(&buf2, &slog.HandlerOptions{Level: slog.LevelDebug})
 
-	h1 := slogadapter.NewSlogHandler(slogH1, monolog.ERROR, handler.WithBubble(false))
-	h2 := slogadapter.NewSlogHandler(slogH2, monolog.DEBUG)
+	h1 := slogadapter.NewSlogHandler(slogH1, monogo.ERROR, handler.WithBubble(false))
+	h2 := slogadapter.NewSlogHandler(slogH2, monogo.DEBUG)
 
 	if !h2.Bubble() {
 		t.Errorf("expected h2 default bubble to be true")
@@ -77,7 +77,7 @@ func TestSlogHandlerBubbling(t *testing.T) {
 		t.Errorf("expected h1 bubble to be false with WithBubble(false)")
 	}
 
-	logger := monolog.New("slog-bubble-test", []monolog.Handler{h1, h2}, nil)
+	logger := monogo.New("slog-bubble-test", []monogo.Handler{h1, h2}, nil)
 
 	// INFO: h1 ignores, h2 receives
 	if err := logger.Info("info message"); err != nil {

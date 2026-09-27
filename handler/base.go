@@ -6,14 +6,14 @@ import (
 
 // BaseHandler provides common functionality for handlers such as level handling and formatter management.
 type BaseHandler struct {
-	level     monolog.Level
-	formatter monolog.Formatter
+	level     monogo.Level
+	formatter monogo.Formatter
 	bubble    bool
 }
 
 type options struct {
 	bubble     bool
-	formatter  monolog.Formatter
+	formatter  monogo.Formatter
 	maxSizeMB  int
 	maxBackups int
 	maxAgeDays int
@@ -43,14 +43,14 @@ func WithBubble(bubble bool) Option {
 }
 
 // WithFormatter configures the handler's formatter at construction time.
-func WithFormatter(formatter monolog.Formatter) Option {
+func WithFormatter(formatter monogo.Formatter) Option {
 	return func(o *options) {
 		o.formatter = formatter
 	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.
-func NewBaseHandler(level monolog.Level, opts ...Option) BaseHandler {
+func NewBaseHandler(level monogo.Level, opts ...Option) BaseHandler {
 	o := defaultOptions()
 	for _, opt := range opts {
 		if opt != nil {
@@ -65,12 +65,12 @@ func NewBaseHandler(level monolog.Level, opts ...Option) BaseHandler {
 }
 
 // IsHandling checks if record level meets minimum level threshold.
-func (b *BaseHandler) IsHandling(level monolog.Level) bool {
+func (b *BaseHandler) IsHandling(level monogo.Level) bool {
 	return level >= b.level
 }
 
 // Formatter gets the current formatter.
-func (b *BaseHandler) Formatter() monolog.Formatter {
+func (b *BaseHandler) Formatter() monogo.Formatter {
 	return b.formatter
 }
 

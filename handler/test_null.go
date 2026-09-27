@@ -9,20 +9,20 @@ import (
 // Test records handled logs in memory for assertions during testing.
 type Test struct {
 	BaseHandler
-	records []monolog.Record
+	records []monogo.Record
 	mu      sync.RWMutex
 }
 
 // NewTest creates a Test handler with optional configuration options.
-func NewTest(level monolog.Level, opts ...Option) *Test {
+func NewTest(level monogo.Level, opts ...Option) *Test {
 	return &Test{
 		BaseHandler: NewBaseHandler(level, opts...),
-		records:     make([]monolog.Record, 0),
+		records:     make([]monogo.Record, 0),
 	}
 }
 
 // Handle stores the log record in memory.
-func (t *Test) Handle(record monolog.Record) error {
+func (t *Test) Handle(record monogo.Record) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.records = append(t.records, record)
@@ -30,16 +30,16 @@ func (t *Test) Handle(record monolog.Record) error {
 }
 
 // Records returns a slice copy of logged records.
-func (t *Test) Records() []monolog.Record {
+func (t *Test) Records() []monogo.Record {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	cp := make([]monolog.Record, len(t.records))
+	cp := make([]monogo.Record, len(t.records))
 	copy(cp, t.records)
 	return cp
 }
 
 // HasRecord checks if any record matches predicate.
-func (t *Test) HasRecord(predicate func(monolog.Record) bool) bool {
+func (t *Test) HasRecord(predicate func(monogo.Record) bool) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	for _, r := range t.records {
@@ -54,7 +54,7 @@ func (t *Test) HasRecord(predicate func(monolog.Record) bool) bool {
 func (t *Test) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	t.records = make([]monolog.Record, 0)
+	t.records = make([]monogo.Record, 0)
 }
 
 // Close resets the handler.
@@ -71,12 +71,12 @@ type Null struct {
 // NewNull creates a Null handler with optional configuration options.
 func NewNull(opts ...Option) *Null {
 	return &Null{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, opts...),
+		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
 	}
 }
 
 // Handle does nothing.
-func (n *Null) Handle(record monolog.Record) error {
+func (n *Null) Handle(record monogo.Record) error {
 	return nil
 }
 

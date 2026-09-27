@@ -39,4 +39,4 @@ Transforms a `Record` into a byte slice or string format for output. Examples:
 - `JSON`: JSON payload formatter.
 
 ### Ambient Context
-Contextual key-value pairs stored in Go's `context.Context` (via `monolog.WithContext` / `monolog.WithField`) that are automatically extracted and attached to log entries when using `*Context` log methods.
+Contextual key-value pairs stored in Go's `context.Context` (via `monogo.WithContext` / `monogo.WithField`) that are automatically extracted and attached to log entries when using `*Context` log methods.

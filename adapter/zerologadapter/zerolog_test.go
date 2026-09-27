@@ -16,8 +16,8 @@ func TestZerologHandler(t *testing.T) {
 	var buf bytes.Buffer
 	zLogger := zerolog.New(&buf).With().Timestamp().Logger()
 
-	zh := zerologadapter.NewZerologHandler(zLogger, monolog.DEBUG)
-	logger := monolog.New("zerolog-chan", []monolog.Handler{zh}, nil)
+	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
+	logger := monogo.New("zerolog-chan", []monogo.Handler{zh}, nil)
 
 	err := logger.Error("something failed", map[string]interface{}{"retry_count": 3})
 	if err != nil {
@@ -51,8 +51,8 @@ func TestZerologHandlerBubbling(t *testing.T) {
 	zLogger1 := zerolog.New(&buf1).With().Logger()
 	zLogger2 := zerolog.New(&buf2).With().Logger()
 
-	h1 := zerologadapter.NewZerologHandler(zLogger1, monolog.ERROR, handler.WithBubble(false))
-	h2 := zerologadapter.NewZerologHandler(zLogger2, monolog.DEBUG)
+	h1 := zerologadapter.NewZerologHandler(zLogger1, monogo.ERROR, handler.WithBubble(false))
+	h2 := zerologadapter.NewZerologHandler(zLogger2, monogo.DEBUG)
 
 	if !h2.Bubble() {
 		t.Errorf("expected h2 default bubble to be true")
@@ -61,7 +61,7 @@ func TestZerologHandlerBubbling(t *testing.T) {
 		t.Errorf("expected h1 bubble to be false with WithBubble(false)")
 	}
 
-	logger := monolog.New("zerolog-bubble-test", []monolog.Handler{h1, h2}, nil)
+	logger := monogo.New("zerolog-bubble-test", []monogo.Handler{h1, h2}, nil)
 
 	// INFO: h1 ignores, h2 receives
 	if err := logger.Info("info message"); err != nil {

@@ -1,4 +1,4 @@
-package monolog
+package monogo
 
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {

@@ -31,7 +31,7 @@ func NewLine(format, dateFormat string) *Line {
 }
 
 // Format transforms a Record into formatted byte slice according to template.
-func (f *Line) Format(record monolog.Record) ([]byte, error) {
+func (f *Line) Format(record monogo.Record) ([]byte, error) {
 	output := f.format
 
 	output = strings.ReplaceAll(output, "%datetime%", record.Time.Format(f.dateFormat))
@@ -52,7 +52,7 @@ func jsonifyMap(m map[string]interface{}) string {
 	if len(m) == 0 {
 		return "[]"
 	}
-	data, err := monolog.MarshalJSONMap(m)
+	data, err := monogo.MarshalJSONMap(m)
 	if err != nil {
 		return "[]"
 	}

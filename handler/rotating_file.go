@@ -58,7 +58,7 @@ func WithCompress(compress bool) Option {
 }
 
 // NewRotatingFile creates a Stream handler configured with rolling/rotating file support powered by lumberjack.
-func NewRotatingFile(filename string, level monolog.Level, opts ...Option) *Stream {
+func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *Stream {
 	o := defaultOptions()
 	for _, opt := range opts {
 		if opt != nil {

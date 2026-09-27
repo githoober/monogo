@@ -10,8 +10,8 @@ import (
 )
 
 // Caller adds file, line, and function name information to Extra["caller"].
-func Caller(skipFrames int) monolog.ProcessorFunc {
-	return func(r monolog.Record) monolog.Record {
+func Caller(skipFrames int) monogo.ProcessorFunc {
+	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {
 			r.Extra = make(map[string]interface{})
 		}
@@ -34,12 +34,12 @@ func Caller(skipFrames int) monolog.ProcessorFunc {
 }
 
 // Hostname adds the OS hostname to Extra["hostname"].
-func Hostname() monolog.ProcessorFunc {
+func Hostname() monogo.ProcessorFunc {
 	host, err := os.Hostname()
 	if err != nil {
 		host = "unknown"
 	}
-	return func(r monolog.Record) monolog.Record {
+	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {
 			r.Extra = make(map[string]interface{})
 		}
@@ -49,8 +49,8 @@ func Hostname() monolog.ProcessorFunc {
 }
 
 // Memory adds memory allocation stats (Alloc and TotalAlloc) to Extra["memory"].
-func Memory() monolog.ProcessorFunc {
-	return func(r monolog.Record) monolog.Record {
+func Memory() monogo.ProcessorFunc {
+	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {
 			r.Extra = make(map[string]interface{})
 		}
@@ -66,8 +66,8 @@ func Memory() monolog.ProcessorFunc {
 }
 
 // Tag adds fixed key/value tag to Extra.
-func Tag(key string, value interface{}) monolog.ProcessorFunc {
-	return func(r monolog.Record) monolog.Record {
+func Tag(key string, value interface{}) monogo.ProcessorFunc {
+	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {
 			r.Extra = make(map[string]interface{})
 		}
@@ -77,12 +77,12 @@ func Tag(key string, value interface{}) monolog.ProcessorFunc {
 }
 
 // UID generates a random 16-character hex unique identifier string and adds it to Extra["uid"].
-func UID() monolog.ProcessorFunc {
+func UID() monogo.ProcessorFunc {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
 	uid := fmt.Sprintf("%x", b)
 
-	return func(r monolog.Record) monolog.Record {
+	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {
 			r.Extra = make(map[string]interface{})
 		}

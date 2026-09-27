@@ -15,18 +15,18 @@ import (
 
 func TestStreamHandler(t *testing.T) {
 	var buf bytes.Buffer
-	sh := handler.NewStream(&buf, monolog.INFO)
+	sh := handler.NewStream(&buf, monogo.INFO)
 
-	if !sh.IsHandling(monolog.INFO) {
+	if !sh.IsHandling(monogo.INFO) {
 		t.Errorf("Stream handler should handle INFO")
 	}
-	if sh.IsHandling(monolog.DEBUG) {
+	if sh.IsHandling(monogo.DEBUG) {
 		t.Errorf("Stream handler should not handle DEBUG")
 	}
 
-	rec := monolog.Record{
+	rec := monogo.Record{
 		Message: "stream test",
-		Level:   monolog.INFO,
+		Level:   monogo.INFO,
 		Channel: "app",
 	}
 
@@ -41,9 +41,9 @@ func TestStreamHandler(t *testing.T) {
 
 func TestStreamHandlerJSONFile(t *testing.T) {
 	var buf bytes.Buffer
-	sh := handler.NewStream(&buf, monolog.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
+	sh := handler.NewStream(&buf, monogo.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
 
-	logger := monolog.New("json-file-app", []monolog.Handler{sh}, nil)
+	logger := monogo.New("json-file-app", []monogo.Handler{sh}, nil)
 
 	err := logger.Info("writing json logs", map[string]interface{}{"file": "app.log", "status": "ok"})
 	if err != nil {
@@ -72,7 +72,7 @@ func TestRotatingFileHandler(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "rotating.log")
 
-	rotH := handler.NewRotatingFile(logPath, monolog.INFO,
+	rotH := handler.NewRotatingFile(logPath, monogo.INFO,
 		handler.WithMaxSize(1),
 		handler.WithMaxBackups(2),
 		handler.WithMaxAge(7),
@@ -83,7 +83,7 @@ func TestRotatingFileHandler(t *testing.T) {
 		t.Errorf("expected default Bubble to be true")
 	}
 
-	logger := monolog.New("rot-app", []monolog.Handler{rotH}, nil)
+	logger := monogo.New("rot-app", []monogo.Handler{rotH}, nil)
 
 	err := logger.Info("rotating file log message", map[string]interface{}{"test": "rotation"})
 	if err != nil {
@@ -104,7 +104,7 @@ func TestRotatingFileHandlerBubbling(t *testing.T) {
 	tmpDir := t.TempDir()
 	logPath := filepath.Join(tmpDir, "rotating_bubble.log")
 
-	rotH := handler.NewRotatingFile(logPath, monolog.ERROR,
+	rotH := handler.NewRotatingFile(logPath, monogo.ERROR,
 		handler.WithBubble(false),
 		handler.WithRotation(handler.RotatingFileOptions{
 			MaxSizeMB:  1,
@@ -119,17 +119,17 @@ func TestRotatingFileHandlerBubbling(t *testing.T) {
 }
 
 func TestFingersCrossedHandler(t *testing.T) {
-	testH := handler.NewTest(monolog.DEBUG)
-	fc := handler.NewFingersCrossed(testH, monolog.ERROR, 10)
+	testH := handler.NewTest(monogo.DEBUG)
+	fc := handler.NewFingersCrossed(testH, monogo.ERROR, 10)
 
-	_ = fc.Handle(monolog.Record{Message: "debug 1", Level: monolog.DEBUG})
-	_ = fc.Handle(monolog.Record{Message: "info 1", Level: monolog.INFO})
+	_ = fc.Handle(monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
+	_ = fc.Handle(monogo.Record{Message: "info 1", Level: monogo.INFO})
 
 	if len(testH.Records()) != 0 {
 		t.Fatalf("FingersCrossed should not have flushed records yet")
 	}
 
-	_ = fc.Handle(monolog.Record{Message: "error 1", Level: monolog.ERROR})
+	_ = fc.Handle(monogo.Record{Message: "error 1", Level: monogo.ERROR})
 
 	recs := testH.Records()
 	if len(recs) != 3 {
@@ -139,19 +139,19 @@ func TestFingersCrossedHandler(t *testing.T) {
 		t.Errorf("Unexpected flushed records order/content: %v", recs)
 	}
 
-	_ = fc.Handle(monolog.Record{Message: "debug 2 post-trigger", Level: monolog.DEBUG})
+	_ = fc.Handle(monogo.Record{Message: "debug 2 post-trigger", Level: monogo.DEBUG})
 	if len(testH.Records()) != 4 {
 		t.Errorf("Expected 4 records after post-trigger log, got %d", len(testH.Records()))
 	}
 }
 
 func TestFilterHandler(t *testing.T) {
-	testH := handler.NewTest(monolog.DEBUG)
-	filterH := handler.NewFilter(testH, monolog.INFO, monolog.ERROR)
+	testH := handler.NewTest(monogo.DEBUG)
+	filterH := handler.NewFilter(testH, monogo.INFO, monogo.ERROR)
 
-	filterH.Handle(monolog.Record{Message: "debug", Level: monolog.DEBUG})
-	filterH.Handle(monolog.Record{Message: "info", Level: monolog.INFO})
-	filterH.Handle(monolog.Record{Message: "crit", Level: monolog.CRITICAL})
+	filterH.Handle(monogo.Record{Message: "debug", Level: monogo.DEBUG})
+	filterH.Handle(monogo.Record{Message: "info", Level: monogo.INFO})
+	filterH.Handle(monogo.Record{Message: "crit", Level: monogo.CRITICAL})
 
 	recs := testH.Records()
 	if len(recs) != 1 || recs[0].Message != "info" {
@@ -160,12 +160,12 @@ func TestFilterHandler(t *testing.T) {
 }
 
 func TestGroupHandler(t *testing.T) {
-	t1 := handler.NewTest(monolog.DEBUG)
-	t2 := handler.NewTest(monolog.WARNING)
-	group := handler.NewGroup([]monolog.Handler{t1, t2})
+	t1 := handler.NewTest(monogo.DEBUG)
+	t2 := handler.NewTest(monogo.WARNING)
+	group := handler.NewGroup([]monogo.Handler{t1, t2})
 
-	group.Handle(monolog.Record{Message: "info msg", Level: monolog.INFO})
-	group.Handle(monolog.Record{Message: "warn msg", Level: monolog.WARNING})
+	group.Handle(monogo.Record{Message: "info msg", Level: monogo.INFO})
+	group.Handle(monogo.Record{Message: "warn msg", Level: monogo.WARNING})
 
 	if len(t1.Records()) != 2 {
 		t.Errorf("t1 should have 2 records, got %d", len(t1.Records()))
@@ -176,17 +176,17 @@ func TestGroupHandler(t *testing.T) {
 }
 
 func TestBufferHandler(t *testing.T) {
-	testH := handler.NewTest(monolog.DEBUG)
-	bufH := handler.NewBuffer(testH, 3, monolog.ERROR)
+	testH := handler.NewTest(monogo.DEBUG)
+	bufH := handler.NewBuffer(testH, 3, monogo.ERROR)
 
-	bufH.Handle(monolog.Record{Message: "msg 1", Level: monolog.INFO})
-	bufH.Handle(monolog.Record{Message: "msg 2", Level: monolog.INFO})
+	bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
 
 	if len(testH.Records()) != 0 {
 		t.Errorf("buffer should not have flushed yet")
 	}
 
-	bufH.Handle(monolog.Record{Message: "msg 3 error", Level: monolog.ERROR})
+	bufH.Handle(monogo.Record{Message: "msg 3 error", Level: monogo.ERROR})
 	if len(testH.Records()) != 3 {
 		t.Errorf("buffer should have flushed 3 records, got %d", len(testH.Records()))
 	}
@@ -194,14 +194,14 @@ func TestBufferHandler(t *testing.T) {
 
 func TestNullAndTestHandler(t *testing.T) {
 	nullH := handler.NewNull()
-	if err := nullH.Handle(monolog.Record{Message: "test", Level: monolog.DEBUG}); err != nil {
+	if err := nullH.Handle(monogo.Record{Message: "test", Level: monogo.DEBUG}); err != nil {
 		t.Errorf("null handler handle error: %v", err)
 	}
 
-	testH := handler.NewTest(monolog.DEBUG)
-	testH.Handle(monolog.Record{Message: "find me", Level: monolog.INFO})
+	testH := handler.NewTest(monogo.DEBUG)
+	testH.Handle(monogo.Record{Message: "find me", Level: monogo.INFO})
 
-	found := testH.HasRecord(func(r monolog.Record) bool {
+	found := testH.HasRecord(func(r monogo.Record) bool {
 		return r.Message == "find me"
 	})
 	if !found {
@@ -211,13 +211,13 @@ func TestNullAndTestHandler(t *testing.T) {
 
 func TestBaseHandlerBubble(t *testing.T) {
 	// Default bubbling (no options)
-	bhDefault := handler.NewBaseHandler(monolog.INFO)
+	bhDefault := handler.NewBaseHandler(monogo.INFO)
 	if !bhDefault.Bubble() {
 		t.Errorf("expected default bubble to be true")
 	}
 
 	// Explicit bubbling = false using WithBubble option
-	bhNoBubble := handler.NewBaseHandler(monolog.INFO, handler.WithBubble(false))
+	bhNoBubble := handler.NewBaseHandler(monogo.INFO, handler.WithBubble(false))
 	if bhNoBubble.Bubble() {
 		t.Errorf("expected bubble to be false when configured with WithBubble(false)")
 	}
@@ -228,10 +228,10 @@ func TestStreamHandlerBubbling(t *testing.T) {
 	var buf2 bytes.Buffer
 
 	// sh1 configured with bubble = false using WithBubble option
-	sh1 := handler.NewStream(&buf1, monolog.ERROR, handler.WithBubble(false))
-	sh2 := handler.NewStream(&buf2, monolog.DEBUG)
+	sh1 := handler.NewStream(&buf1, monogo.ERROR, handler.WithBubble(false))
+	sh2 := handler.NewStream(&buf2, monogo.DEBUG)
 
-	logger := monolog.New("bubble-stream-test", []monolog.Handler{sh1, sh2}, nil)
+	logger := monogo.New("bubble-stream-test", []monogo.Handler{sh1, sh2}, nil)
 
 	// INFO: sh1 does not handle, so sh2 receives it
 	if err := logger.Info("info msg"); err != nil {

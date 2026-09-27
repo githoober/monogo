@@ -12,15 +12,15 @@ type ZerologHandler struct {
 }
 
 // NewZerologHandler creates a ZerologHandler with optional configuration options.
-func NewZerologHandler(l zerolog.Logger, minLevel monolog.Level, opts ...handler.Option) *ZerologHandler {
+func NewZerologHandler(l zerolog.Logger, minLevel monogo.Level, opts ...handler.Option) *ZerologHandler {
 	return &ZerologHandler{
 		BaseHandler: handler.NewBaseHandler(minLevel, opts...),
 		logger:      l,
 	}
 }
 
-func (z *ZerologHandler) Handle(record monolog.Record) error {
-	zLevel := mapMonologToZerologLevel(record.Level)
+func (z *ZerologHandler) Handle(record monogo.Record) error {
+	zLevel := mapMonogoToZerologLevel(record.Level)
 
 	event := z.logger.WithLevel(zLevel)
 	if !event.Enabled() {
@@ -47,15 +47,15 @@ func (z *ZerologHandler) Close() error {
 	return nil
 }
 
-func mapMonologToZerologLevel(lvl monolog.Level) zerolog.Level {
+func mapMonogoToZerologLevel(lvl monogo.Level) zerolog.Level {
 	switch {
-	case lvl < monolog.INFO:
+	case lvl < monogo.INFO:
 		return zerolog.DebugLevel
-	case lvl < monolog.WARNING:
+	case lvl < monogo.WARNING:
 		return zerolog.InfoLevel
-	case lvl < monolog.ERROR:
+	case lvl < monogo.ERROR:
 		return zerolog.WarnLevel
-	case lvl < monolog.CRITICAL:
+	case lvl < monogo.CRITICAL:
 		return zerolog.ErrorLevel
 	default:
 		return zerolog.FatalLevel

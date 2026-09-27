@@ -16,7 +16,7 @@ type Stream struct {
 }
 
 // NewStream creates a Stream handler with optional configuration options (defaults: bubble=true).
-func NewStream(w io.Writer, level monolog.Level, opts ...Option) *Stream {
+func NewStream(w io.Writer, level monogo.Level, opts ...Option) *Stream {
 	h := &Stream{
 		BaseHandler: NewBaseHandler(level, opts...),
 		writer:      w,
@@ -28,7 +28,7 @@ func NewStream(w io.Writer, level monolog.Level, opts ...Option) *Stream {
 }
 
 // Handle formats and writes the record to stream writer.
-func (s *Stream) Handle(record monolog.Record) error {
+func (s *Stream) Handle(record monogo.Record) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

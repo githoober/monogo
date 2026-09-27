@@ -32,7 +32,7 @@ type jsonRecordPayload struct {
 }
 
 // Format formats the record as JSON bytes.
-func (j *JSON) Format(record monolog.Record) ([]byte, error) {
+func (j *JSON) Format(record monogo.Record) ([]byte, error) {
 	payload := jsonRecordPayload{
 		Message:   record.Message,
 		Level:     record.Level.String(),

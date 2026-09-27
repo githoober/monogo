@@ -5,7 +5,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 ## Features
 
 - **Generic & Backend-Agnostic**: Core Monogo logger operates through generic `Handler`, `Processor`, and `Formatter` interfaces without hard dependencies on any specific backend.
-- **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monolog.WithContext` / `monolog.WithField`. These fields are automatically extracted and merged into log records when using `*Context` log methods.
+- **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records when using `*Context` log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
 - **Handlers**: Stream, RotatingFile, Filter, Group, Buffer, FingersCrossed, Test, Null.
@@ -37,18 +37,18 @@ import (
 
 func main() {
 	// Create a stream handler writing to stdout
-	stdoutHandler := handler.NewStream(os.Stdout, monolog.INFO)
+	stdoutHandler := handler.NewStream(os.Stdout, monogo.INFO)
 
 	// Create logger
-	logger := monolog.New("main", []monolog.Handler{stdoutHandler}, []monolog.Processor{
+	logger := monogo.New("main", []monogo.Handler{stdoutHandler}, []monogo.Processor{
 		processor.Hostname(),
 		processor.UID(),
 	})
 
 	// Set ambient fields in Go context
 	ctx := context.Background()
-	ctx = monolog.WithField(ctx, "request_id", "req-12345")
-	ctx = monolog.WithContext(ctx, map[string]interface{}{
+	ctx = monogo.WithField(ctx, "request_id", "req-12345")
+	ctx = monogo.WithContext(ctx, map[string]interface{}{
 		"tenant": "acme-corp",
 	})
 
@@ -73,7 +73,7 @@ import (
 
 func main() {
 	// Create a rotating file handler (rotates when log reaches 10MB, keeps 5 backups, retains for 30 days, compresses, formatted as JSON)
-	rotHandler := handler.NewRotatingFile("app.log", monolog.DEBUG,
+	rotHandler := handler.NewRotatingFile("app.log", monogo.DEBUG,
 		handler.WithMaxSize(10),
 		handler.WithMaxBackups(5),
 		handler.WithMaxAge(30),
@@ -82,7 +82,7 @@ func main() {
 	)
 	defer rotHandler.Close()
 
-	logger := monolog.New("app", []monolog.Handler{rotHandler}, nil)
+	logger := monogo.New("app", []monogo.Handler{rotHandler}, nil)
 	logger.Info("App initialized with rolling log files")
 }
 ```
@@ -100,12 +100,12 @@ import (
 )
 
 // Create a stream output target
-streamHandler := handler.NewStream(os.Stdout, monolog.DEBUG)
+streamHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
 
 // Wrap with FingersCrossed: buffers until ERROR level is triggered (buffer size up to 100 entries)
-fcHandler := handler.NewFingersCrossed(streamHandler, monolog.ERROR, 100)
+fcHandler := handler.NewFingersCrossed(streamHandler, monogo.ERROR, 100)
 
-logger := monolog.New("app", []monolog.Handler{fcHandler}, nil)
+logger := monogo.New("app", []monogo.Handler{fcHandler}, nil)
 
 logger.Debug("Step 1 initialized") // Buffered silently
 logger.Info("Step 2 processing")   // Buffered silently
@@ -119,12 +119,12 @@ Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By defa
 ```go
 // Error-only handler that absorbs ERROR logs and prevents them from reaching stdout (bubble = false)
 errFile, _ := os.OpenFile("errors.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-errHandler := handler.NewStream(errFile, monolog.ERROR, handler.WithBubble(false))
+errHandler := handler.NewStream(errFile, monogo.ERROR, handler.WithBubble(false))
 
-stdoutHandler := handler.NewStream(os.Stdout, monolog.DEBUG) // default bubble = true
+stdoutHandler := handler.NewStream(os.Stdout, monogo.DEBUG) // default bubble = true
 
 // Handlers are evaluated in stack order (errHandler runs first)
-logger := monolog.New("app", []monolog.Handler{errHandler, stdoutHandler}, nil)
+logger := monogo.New("app", []monogo.Handler{errHandler, stdoutHandler}, nil)
 
 logger.Info("Normal message")   // errHandler ignores; prints to stdout
 logger.Error("Critical error")  // errHandler handles and suppresses bubbling; only written to errors.log
@@ -155,10 +155,10 @@ func main() {
 	defer file.Close()
 
 	// Create a Stream handler writing JSON logs to the file
-	fileHandler := handler.NewStream(file, monolog.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
+	fileHandler := handler.NewStream(file, monogo.DEBUG, handler.WithFormatter(formatter.NewJSON("")))
 
 	// Initialize Logger
-	logger := monolog.New("app", []monolog.Handler{fileHandler}, nil)
+	logger := monogo.New("app", []monogo.Handler{fileHandler}, nil)
 
 	// Log JSON entries
 	logger.Info("Server started", map[string]interface{}{"port": 8080})
@@ -180,9 +180,9 @@ import (
 )
 
 slogHandler := slog.NewJSONHandler(os.Stdout, nil)
-monoHandler := slogadapter.NewSlogHandler(slogHandler, monolog.DEBUG)
+monoHandler := slogadapter.NewSlogHandler(slogHandler, monogo.DEBUG)
 
-logger := monolog.New("app", []monolog.Handler{monoHandler}, nil)
+logger := monogo.New("app", []monogo.Handler{monoHandler}, nil)
 logger.Info("Logged via slog backend", map[string]interface{}{"env": "production"})
 ```
 
@@ -197,11 +197,11 @@ import (
 	"github.com/githoober/monogo/handler"
 )
 
-testHandler := handler.NewStream(os.Stdout, monolog.DEBUG)
-monoLogger := monolog.New("bridge", []monolog.Handler{testHandler}, nil)
+testHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+monoLogger := monogo.New("bridge", []monogo.Handler{testHandler}, nil)
 
 // Set standard slog default logger to use Monogo
-slog.SetDefault(slog.New(slogadapter.NewMonologSlogBridge(monoLogger)))
+slog.SetDefault(slog.New(slogadapter.NewMonogoSlogBridge(monoLogger)))
 
 slog.Info("Hello from stdlib slog!", "key", "value")
 ```
@@ -218,9 +218,9 @@ import (
 )
 
 zLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-zh := zerologadapter.NewZerologHandler(zLogger, monolog.DEBUG)
+zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 
-logger := monolog.New("api", []monolog.Handler{zh}, nil)
+logger := monogo.New("api", []monogo.Handler{zh}, nil)
 logger.Error("Database connection lost", map[string]interface{}{"db": "postgres"})
 ```
 
