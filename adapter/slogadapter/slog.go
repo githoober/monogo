@@ -39,9 +39,9 @@ type SlogHandler struct {
 	slogHandler slog.Handler
 }
 
-func NewSlogHandler(h slog.Handler, minLevel monolog.Level) *SlogHandler {
+func NewSlogHandler(h slog.Handler, minLevel monolog.Level, bubble ...bool) *SlogHandler {
 	return &SlogHandler{
-		BaseHandler: handler.NewBaseHandler(minLevel, true),
+		BaseHandler: handler.NewBaseHandler(minLevel, bubble...),
 		slogHandler: h,
 	}
 }

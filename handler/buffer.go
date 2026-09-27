@@ -16,10 +16,10 @@ type Buffer struct {
 	mu          sync.Mutex
 }
 
-// NewBuffer creates a Buffer handler.
-func NewBuffer(handler monolog.Handler, bufferLimit int, flushLevel monolog.Level) *Buffer {
+// NewBuffer creates a Buffer handler with optional bubbling control (defaults to true).
+func NewBuffer(handler monolog.Handler, bufferLimit int, flushLevel monolog.Level, bubble ...bool) *Buffer {
 	return &Buffer{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monolog.DEBUG, bubble...),
 		handler:     handler,
 		bufferLimit: bufferLimit,
 		flushLevel:  flushLevel,

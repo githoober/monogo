@@ -14,11 +14,15 @@ type BaseHandler struct {
 	bubble    bool
 }
 
-// NewBaseHandler initializes a BaseHandler.
-func NewBaseHandler(level monolog.Level, bubble bool) BaseHandler {
+// NewBaseHandler initializes a BaseHandler with optional bubble control (defaults to true).
+func NewBaseHandler(level monolog.Level, bubble ...bool) BaseHandler {
+	b := true
+	if len(bubble) > 0 {
+		b = bubble[0]
+	}
 	return BaseHandler{
 		level:  level,
-		bubble: bubble,
+		bubble: b,
 	}
 }
 
@@ -50,16 +54,7 @@ func (b *BaseHandler) Formatter() monolog.Formatter {
 	return b.formatter
 }
 
-// SetBubble updates whether handler allows bubbling.
-func (b *BaseHandler) SetBubble(bubble bool) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.bubble = bubble
-}
-
 // Bubble returns whether handler allows bubbling.
 func (b *BaseHandler) Bubble() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
 	return b.bubble
 }

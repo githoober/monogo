@@ -13,10 +13,10 @@ type Test struct {
 	mu      sync.RWMutex
 }
 
-// NewTest creates a Test handler.
-func NewTest(level monolog.Level) *Test {
+// NewTest creates a Test handler with optional bubbling control (defaults to true).
+func NewTest(level monolog.Level, bubble ...bool) *Test {
 	return &Test{
-		BaseHandler: NewBaseHandler(level, true),
+		BaseHandler: NewBaseHandler(level, bubble...),
 		records:     make([]monolog.Record, 0),
 	}
 }
@@ -68,10 +68,10 @@ type Null struct {
 	BaseHandler
 }
 
-// NewNull creates a Null handler.
-func NewNull() *Null {
+// NewNull creates a Null handler with optional bubbling control (defaults to true).
+func NewNull(bubble ...bool) *Null {
 	return &Null{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monolog.DEBUG, bubble...),
 	}
 }
 

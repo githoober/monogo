@@ -116,15 +116,14 @@ logger.Error("Step 3 failed!")     // Triggers flush: prints Step 1, Step 2, and
 
 ## Handler Bubbling
 
-Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By default, records bubble through all handlers that handle the record's level. A handler can stop propagation down the stack by disabling bubbling with `.SetBubble(false)`:
+Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By default, records bubble through all handlers that handle the record's level. A handler can stop propagation down the stack by configuring bubbling as `false` at construction time:
 
 ```go
-// Error-only handler that absorbs ERROR logs and prevents them from reaching stdout
+// Error-only handler that absorbs ERROR logs and prevents them from reaching stdout (bubble = false)
 errFile, _ := os.OpenFile("errors.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-errHandler := handler.NewStream(errFile, monolog.ERROR)
-errHandler.SetBubble(false) // Stops propagation for records handled here
+errHandler := handler.NewStream(errFile, monolog.ERROR, false) // bubble = false at construction time
 
-stdoutHandler := handler.NewStream(os.Stdout, monolog.DEBUG)
+stdoutHandler := handler.NewStream(os.Stdout, monolog.DEBUG) // default bubble = true
 
 // Handlers are evaluated in stack order (errHandler runs first)
 logger := monolog.New("app", []monolog.Handler{errHandler, stdoutHandler}, nil)

@@ -7,10 +7,11 @@ import (
 
 // RotatingFileOptions specifies rotation settings for log files.
 type RotatingFileOptions struct {
-	MaxSizeMB  int  // Max size in MB before rotation (default 100MB)
-	MaxBackups int  // Max number of old log files to retain (default 3)
-	MaxAgeDays int  // Max number of days to retain old log files
-	Compress   bool // Whether to compress rotated log files with gzip
+	MaxSizeMB  int   // Max size in MB before rotation (default 100MB)
+	MaxBackups int   // Max number of old log files to retain (default 3)
+	MaxAgeDays int   // Max number of days to retain old log files
+	Compress   bool  // Whether to compress rotated log files with gzip
+	Bubble     *bool // Whether handler allows bubbling (default true)
 }
 
 // NewRotatingFile creates a Stream handler configured with rolling/rotating file support powered by lumberjack.
@@ -27,6 +28,11 @@ func NewRotatingFile(filename string, level monolog.Level, opts ...RotatingFileO
 		opt.MaxBackups = 3
 	}
 
+	bubble := true
+	if opt.Bubble != nil {
+		bubble = *opt.Bubble
+	}
+
 	lj := &lumberjack.Logger{
 		Filename:   filename,
 		MaxSize:    opt.MaxSizeMB,
@@ -35,5 +41,5 @@ func NewRotatingFile(filename string, level monolog.Level, opts ...RotatingFileO
 		Compress:   opt.Compress,
 	}
 
-	return NewStream(lj, level)
+	return NewStream(lj, level, bubble)
 }

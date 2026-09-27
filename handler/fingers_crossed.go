@@ -18,11 +18,11 @@ type FingersCrossed struct {
 	mu          sync.Mutex
 }
 
-// NewFingersCrossed creates a FingersCrossed handler.
+// NewFingersCrossed creates a FingersCrossed handler with optional bubbling control (defaults to true).
 // bufferSize specifies the maximum number of records to buffer before triggering (0 = unlimited).
-func NewFingersCrossed(handler monolog.Handler, actionLevel monolog.Level, bufferSize int) *FingersCrossed {
+func NewFingersCrossed(handler monolog.Handler, actionLevel monolog.Level, bufferSize int, bubble ...bool) *FingersCrossed {
 	return &FingersCrossed{
-		BaseHandler: NewBaseHandler(monolog.DEBUG, true),
+		BaseHandler: NewBaseHandler(monolog.DEBUG, bubble...),
 		handler:     handler,
 		actionLevel: actionLevel,
 		bufferSize:  bufferSize,
