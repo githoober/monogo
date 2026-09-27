@@ -1,5 +1,5 @@
-github.com/githoober/monogo v0.0.0-20260927041635-11ebe7b484df h1:h+3UFa7htr6nt0aMjMpU7NuHkIaGrUlF6DF6m2LZxrI=
-github.com/githoober/monogo v0.0.0-20260927041635-11ebe7b484df/go.mod h1:ycjhXHn0ytTo2GPopXkrCB1EjjhIJYIzgwEll/ctlzg=
+github.com/githoober/monogo v0.0.0-20260927134700-2e2d9b9edf1d h1:W65Y4yb3dMtOzgk2/qYGyg78xPjVxG35SbWzoTs7Rvs=
+github.com/githoober/monogo v0.0.0-20260927134700-2e2d9b9edf1d/go.mod h1:HV9PyKYjm9Ip6FG5/iOe0hki7n14oLTnzlCdrtLr4bU=
 github.com/mattn/go-colorable v0.1.14 h1:9A9LHSqF/7dyVVX6g0U9cwm9pG3kP9gSzcuIPHPsaIE=
 github.com/mattn/go-colorable v0.1.14/go.mod h1:6LmQG8QLFO4G5z1gPvYEzlUgJ2wF+stgPZH1UqBm1s8=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
