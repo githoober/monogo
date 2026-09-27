@@ -1,6 +1,7 @@
 package formatter
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/githoober/monogo"
@@ -46,6 +47,19 @@ func (f *Line) Format(record monogo.Record) ([]byte, error) {
 	output = strings.ReplaceAll(output, "%extra%", extraStr)
 
 	return []byte(output), nil
+}
+
+// FormatBatch transforms a slice of Records into formatted bytes by formatting each record in order.
+func (f *Line) FormatBatch(records []monogo.Record) ([]byte, error) {
+	var buf bytes.Buffer
+	for _, record := range records {
+		b, err := f.Format(record)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(b)
+	}
+	return buf.Bytes(), nil
 }
 
 func jsonifyMap(m map[string]interface{}) string {

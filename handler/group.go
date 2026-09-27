@@ -41,6 +41,29 @@ func (g *Group) Handle(record monogo.Record) error {
 	return lastErr
 }
 
+// HandleBatch forwards a batch of records to all sub-handlers.
+// Sub-handlers implementing BatchHandler receive the batch directly;
+// others fall back to handling each handled record individually.
+func (g *Group) HandleBatch(records []monogo.Record) error {
+	var lastErr error
+	for _, h := range g.handlers {
+		if bh, ok := h.(monogo.BatchHandler); ok {
+			if err := bh.HandleBatch(records); err != nil {
+				lastErr = err
+			}
+		} else {
+			for _, rec := range records {
+				if h.IsHandling(rec.Level) {
+					if err := h.Handle(rec); err != nil {
+						lastErr = err
+					}
+				}
+			}
+		}
+	}
+	return lastErr
+}
+
 // Close closes all nested handlers.
 func (g *Group) Close() error {
 	var lastErr error

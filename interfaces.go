@@ -7,6 +7,13 @@ type Handler interface {
 	Close() error
 }
 
+// BatchHandler is an optional interface for handlers capable of processing a batch of records
+// in a single atomic or optimized operation.
+type BatchHandler interface {
+	Handler
+	HandleBatch(records []Record) error
+}
+
 // Bubbler allows a handler to control whether a record bubbles down through the handler stack.
 // When a handler processes a record and its Bubble() method returns false,
 // the logger stops passing the record to subsequent handlers in the stack.
@@ -29,4 +36,11 @@ func (f ProcessorFunc) Process(record Record) Record {
 // Formatter formats a Record into bytes or string representation.
 type Formatter interface {
 	Format(record Record) ([]byte, error)
+}
+
+// BatchFormatter is an optional interface for formatters capable of formatting multiple
+// records together (e.g. into a continuous buffer or a JSON array).
+type BatchFormatter interface {
+	Formatter
+	FormatBatch(records []Record) ([]byte, error)
 }

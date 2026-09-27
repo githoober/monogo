@@ -191,3 +191,20 @@ func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
 	}
 }
 
+func TestZerologHandlerWithBufferFallback(t *testing.T) {
+	var buf bytes.Buffer
+	zLogger := zerolog.New(&buf).With().Logger()
+	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
+	bufH := handler.NewBuffer(zh, 2, monogo.ERROR)
+
+	_ = bufH.Handle(monogo.Record{Message: "zero batch 1", Level: monogo.INFO, Channel: "zero-chan"})
+	_ = bufH.Handle(monogo.Record{Message: "zero batch 2", Level: monogo.WARNING, Channel: "zero-chan"})
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 log lines, got %d: %q", len(lines), buf.String())
+	}
+}
+
+
+

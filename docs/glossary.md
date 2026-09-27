@@ -40,3 +40,12 @@ Transforms a `Record` into a byte slice or string format for output. Examples:
 
 ### Ambient Context
 Contextual key-value pairs stored in Go's `context.Context` (via `monogo.WithContext` / `monogo.WithField`) that are automatically extracted and attached to log entries when using `*Context` log methods.
+
+### Batch Handling
+Supported via `monogo.BatchHandler` (`HandleBatch([]Record) error`) and `monogo.BatchFormatter` (`FormatBatch([]Record) ([]byte, error)`). Buffering handlers (`Buffer`, `FingersCrossed`) detect `BatchHandler` via type assertion to flush accumulated records in atomic, single-write operations, while cleanly falling back to `Handle` for standard handlers.
+
+### Batch Mode
+Formatting options on `formatter.JSON` for multi-record batches:
+- `BatchModeNewlines` (default): Formats each record as an independent line of JSON (NDJSON).
+- `BatchModeJSON`: Formats the entire batch as a single JSON array (`[...]`).
+

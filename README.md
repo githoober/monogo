@@ -9,8 +9,9 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
 - **Handlers**: Stream, RotatingFile, Filter, Group, Buffer, FingersCrossed, Test, Null.
+- **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
 - **Processors**: Enriched logging metadata (Caller, Hostname, Memory stats, Tags, Unique request ID/UID).
-- **Formatters**: Line, JSON.
+- **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
   - `zerolog` Backend (use `zerolog` as a Monogo output handler).
@@ -128,6 +129,44 @@ logger := monogo.New("app", []monogo.Handler{errHandler, stdoutHandler}, nil)
 
 logger.Info("Normal message")   // errHandler ignores; prints to stdout
 logger.Error("Critical error")  // errHandler handles and suppresses bubbling; only written to errors.log
+```
+
+## Batch Processing & Buffering
+
+Buffering handlers accumulate log entries and flush them via `monogo.BatchHandler` and `monogo.BatchFormatter`. Handlers that support optimized batch emission receive batches directly via `HandleBatch`, while standard handlers gracefully receive records via `Handle` without requiring iteration boilerplate:
+
+### 1. `Buffer` Handler
+Buffers entries until a capacity limit is reached or a flush level is triggered:
+
+```go
+// Buffer up to 100 entries, flushing immediately if an ERROR occurs
+fileHandler := handler.NewStream(file, monogo.DEBUG)
+bufferHandler := handler.NewBuffer(fileHandler, 100, monogo.ERROR)
+
+logger := monogo.New("app", []monogo.Handler{bufferHandler}, nil)
+defer logger.Close() // Flushes remaining buffered logs on shutdown
+```
+
+### 2. `FingersCrossed` Handler
+Buffers low-severity logs (e.g. `DEBUG`, `INFO`) and only flushes them if an action level (e.g. `ERROR`) is reached:
+
+```go
+// Retain up to 1000 records; silently buffers until an ERROR occurs, then flushes all diagnostic history
+fileHandler := handler.NewStream(file, monogo.DEBUG)
+fcHandler := handler.NewFingersCrossed(fileHandler, monogo.ERROR, 1000)
+
+logger := monogo.New("app", []monogo.Handler{fcHandler}, nil)
+```
+
+### 3. Batch JSON Formatting Modes
+The JSON formatter supports two batch formatting modes via `WithBatchMode`:
+
+```go
+// NDJSON format (one JSON object per line, default)
+jsonLines := formatter.NewJSON("").WithBatchMode(formatter.BatchModeNewlines)
+
+// JSON Array format (single JSON array containing all records in the batch)
+jsonArray := formatter.NewJSON("").WithBatchMode(formatter.BatchModeJSON)
 ```
 
 
