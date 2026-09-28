@@ -108,11 +108,11 @@ func (l *Logger) WithChannel(channel string) *Logger {
 	return l.WithName(channel)
 }
 
-func (l *Logger) IsHandling(level Level) bool {
+func (l *Logger) IsHandling(ctx context.Context, level Level) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	for _, h := range l.handlers {
-		if h.IsHandling(level) {
+		if h.IsHandling(ctx, level) {
 			return true
 		}
 	}
@@ -120,7 +120,7 @@ func (l *Logger) IsHandling(level Level) bool {
 }
 
 func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map[string]interface{}) error {
-	if !l.IsHandling(level) {
+	if !l.IsHandling(ctx, level) {
 		return nil
 	}
 
@@ -147,7 +147,7 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 	}
 
 	for _, h := range handlers {
-		if h.IsHandling(level) {
+		if h.IsHandling(ctx, level) {
 			if err := h.Handle(ctx, record); err != nil {
 				return err
 			}

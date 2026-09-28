@@ -35,13 +35,13 @@ func NewFilterFunc(handler monogo.Handler, predicate func(monogo.Record) bool, o
 }
 
 // IsHandling checks if wrapped handler accepts record and record meets filter condition.
-func (f *Filter) IsHandling(level monogo.Level) bool {
+func (f *Filter) IsHandling(ctx context.Context, level monogo.Level) bool {
 	if f.predicate == nil {
 		if level < f.minLevel || level > f.maxLevel {
 			return false
 		}
 	}
-	return f.handler.IsHandling(level)
+	return f.handler.IsHandling(ctx, level)
 }
 
 // Handle routes handling to inner handler if predicate/level check succeeds.

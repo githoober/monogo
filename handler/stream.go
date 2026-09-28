@@ -54,7 +54,7 @@ func (s *Stream) Handle(ctx context.Context, record monogo.Record) error {
 func (s *Stream) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	handled := make([]monogo.Record, 0, len(records))
 	for _, rec := range records {
-		if s.IsHandling(rec.Level) {
+		if s.IsHandling(ctx, rec.Level) {
 			handled = append(handled, s.ProcessRecord(rec))
 		}
 	}

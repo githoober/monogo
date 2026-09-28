@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/githoober/monogo"
 )
 
@@ -86,7 +88,7 @@ func NewBaseHandler(level monogo.Level, opts ...Option) BaseHandler {
 }
 
 // IsHandling checks if record level meets minimum level threshold.
-func (b *BaseHandler) IsHandling(level monogo.Level) bool {
+func (b *BaseHandler) IsHandling(_ context.Context, level monogo.Level) bool {
 	return level >= b.level
 }
 

@@ -285,3 +285,66 @@ func TestSlogHandlerContextForwarding(t *testing.T) {
 		t.Errorf("expected context value 'ctx-val-456', got: %v", capture.lastCtx.Value(testCtxKey{}))
 	}
 }
+
+type conditionalSlogHandler struct {
+	captureSlogHandler
+}
+
+func (cs *conditionalSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	if val, ok := ctx.Value("slog_enable").(bool); ok && val {
+		return true
+	}
+	return false
+}
+
+func TestSlogHandlerIsHandlingWithContext(t *testing.T) {
+	cond := &conditionalSlogHandler{}
+	sh := slogadapter.NewSlogHandler(cond, monogo.DEBUG)
+
+	ctxOff := context.Background()
+	ctxOn := context.WithValue(context.Background(), "slog_enable", true)
+
+	if sh.IsHandling(ctxOff, monogo.INFO) {
+		t.Errorf("expected SlogHandler.IsHandling to return false when context disables it")
+	}
+	if !sh.IsHandling(ctxOn, monogo.INFO) {
+		t.Errorf("expected SlogHandler.IsHandling to return true when context enables it")
+	}
+}
+
+type ctxAwareMockHandler struct {
+	lastCtx context.Context
+}
+
+func (c *ctxAwareMockHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
+	c.lastCtx = ctx
+	val, ok := ctx.Value("bridge_enable").(bool)
+	return ok && val
+}
+
+func (c *ctxAwareMockHandler) Handle(ctx context.Context, record monogo.Record) error {
+	return nil
+}
+
+func (c *ctxAwareMockHandler) Close(ctx context.Context) error {
+	return nil
+}
+
+func TestMonogoSlogBridgeEnabledContext(t *testing.T) {
+	handler := &ctxAwareMockHandler{}
+	logger := monogo.New("bridge-test", []monogo.Handler{handler}, nil)
+	bridge := slogadapter.NewMonogoSlogBridge(logger)
+
+	ctxOff := context.Background()
+	ctxOn := context.WithValue(context.Background(), "bridge_enable", true)
+
+	if bridge.Enabled(ctxOff, slog.LevelInfo) {
+		t.Errorf("expected bridge.Enabled to be false when context disables it")
+	}
+	if !bridge.Enabled(ctxOn, slog.LevelInfo) {
+		t.Errorf("expected bridge.Enabled to be true when context enables it")
+	}
+	if handler.lastCtx == nil || handler.lastCtx.Value("bridge_enable") != true {
+		t.Errorf("expected handler to receive the context passed to bridge.Enabled")
+	}
+}

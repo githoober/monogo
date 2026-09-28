@@ -4,7 +4,7 @@ import "context"
 
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
-	IsHandling(level Level) bool
+	IsHandling(ctx context.Context, level Level) bool
 	Handle(ctx context.Context, record Record) error
 	Close(ctx context.Context) error
 }

@@ -36,7 +36,7 @@ func (t *Test) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, rec := range records {
-		if t.IsHandling(rec.Level) {
+		if t.IsHandling(ctx, rec.Level) {
 			t.records = append(t.records, t.ProcessRecord(rec))
 		}
 	}

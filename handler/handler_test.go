@@ -19,10 +19,10 @@ func TestStreamHandler(t *testing.T) {
 	var buf bytes.Buffer
 	sh := handler.NewStream(&buf, monogo.INFO)
 
-	if !sh.IsHandling(monogo.INFO) {
+	if !sh.IsHandling(context.Background(), monogo.INFO) {
 		t.Errorf("Stream handler should handle INFO")
 	}
-	if sh.IsHandling(monogo.DEBUG) {
+	if sh.IsHandling(context.Background(), monogo.DEBUG) {
 		t.Errorf("Stream handler should not handle DEBUG")
 	}
 
@@ -401,7 +401,7 @@ type nonBatchMockHandler struct {
 	handleCalls int
 }
 
-func (n *nonBatchMockHandler) IsHandling(level monogo.Level) bool {
+func (n *nonBatchMockHandler) IsHandling(_ context.Context, level monogo.Level) bool {
 	return level >= n.minLevel
 }
 

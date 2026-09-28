@@ -28,6 +28,11 @@ func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level,
 	}
 }
 
+// IsHandling returns true if the wrapped handler handles the log level.
+func (b *Buffer) IsHandling(ctx context.Context, level monogo.Level) bool {
+	return b.handler.IsHandling(ctx, level)
+}
+
 // Handle buffers record and flushes if conditions are met.
 func (b *Buffer) Handle(ctx context.Context, record monogo.Record) error {
 	record = b.ProcessRecord(record)

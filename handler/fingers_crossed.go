@@ -33,8 +33,8 @@ func NewFingersCrossed(handler monogo.Handler, actionLevel monogo.Level, bufferS
 }
 
 // IsHandling returns true for all levels >= handler's minimum level.
-func (f *FingersCrossed) IsHandling(level monogo.Level) bool {
-	return f.handler.IsHandling(level)
+func (f *FingersCrossed) IsHandling(ctx context.Context, level monogo.Level) bool {
+	return f.handler.IsHandling(ctx, level)
 }
 
 // Handle buffers records until actionLevel is met or buffer capacity is exceeded, then flushes and forwards.

@@ -21,9 +21,9 @@ func NewGroup(handlers []monogo.Handler, opts ...Option) *Group {
 }
 
 // IsHandling returns true if any nested handler handles the log level.
-func (g *Group) IsHandling(level monogo.Level) bool {
+func (g *Group) IsHandling(ctx context.Context, level monogo.Level) bool {
 	for _, h := range g.handlers {
-		if h.IsHandling(level) {
+		if h.IsHandling(ctx, level) {
 			return true
 		}
 	}
@@ -35,7 +35,7 @@ func (g *Group) Handle(ctx context.Context, record monogo.Record) error {
 	record = g.ProcessRecord(record)
 	var lastErr error
 	for _, h := range g.handlers {
-		if h.IsHandling(record.Level) {
+		if h.IsHandling(ctx, record.Level) {
 			if err := h.Handle(ctx, record); err != nil {
 				lastErr = err
 			}
@@ -64,7 +64,7 @@ func (g *Group) HandleBatch(ctx context.Context, records []monogo.Record) error 
 			}
 		} else {
 			for _, rec := range records {
-				if h.IsHandling(rec.Level) {
+				if h.IsHandling(ctx, rec.Level) {
 					if err := h.Handle(ctx, rec); err != nil {
 						lastErr = err
 					}

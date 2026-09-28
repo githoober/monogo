@@ -15,7 +15,7 @@ type mockHandler struct {
 	lastCtx  context.Context
 }
 
-func (m *mockHandler) IsHandling(level monogo.Level) bool {
+func (m *mockHandler) IsHandling(_ context.Context, level monogo.Level) bool {
 	return level >= m.minLevel
 }
 
@@ -295,6 +295,64 @@ func TestHandlerBubblingContinuesWhenTrue(t *testing.T) {
 	}
 	if len(bottomHandler.records) != 1 {
 		t.Fatalf("expected bottom handler to have 1 record, got %d", len(bottomHandler.records))
+	}
+}
+
+type contextAwareHandler struct {
+	handledRecords []monogo.Record
+}
+
+func (c *contextAwareHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
+	if level >= monogo.INFO {
+		return true
+	}
+	// Dynamically allow DEBUG only if context has "debug_mode" == true
+	if val, ok := ctx.Value("debug_mode").(bool); ok && val {
+		return true
+	}
+	return false
+}
+
+func (c *contextAwareHandler) Handle(ctx context.Context, record monogo.Record) error {
+	c.handledRecords = append(c.handledRecords, record)
+	return nil
+}
+
+func (c *contextAwareHandler) Close(ctx context.Context) error {
+	return nil
+}
+
+func TestLoggerIsHandlingContext(t *testing.T) {
+	h := &contextAwareHandler{}
+	logger := monogo.New("ctx-handling-test", []monogo.Handler{h}, nil)
+
+	ctxOff := context.Background()
+	ctxOn := context.WithValue(context.Background(), "debug_mode", true)
+
+	// Test IsHandling directly
+	if logger.IsHandling(ctxOff, monogo.DEBUG) {
+		t.Errorf("expected IsHandling to be false when debug_mode is absent")
+	}
+	if !logger.IsHandling(ctxOn, monogo.DEBUG) {
+		t.Errorf("expected IsHandling to be true when debug_mode is true")
+	}
+	if !logger.IsHandling(ctxOff, monogo.INFO) {
+		t.Errorf("expected IsHandling to be true for INFO regardless of debug_mode")
+	}
+
+	// Test Log early return based on context
+	if err := logger.Debug(ctxOff, "disabled debug"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(h.handledRecords) != 0 {
+		t.Errorf("expected 0 records logged when debug is disabled in ctx, got %d", len(h.handledRecords))
+	}
+
+	if err := logger.Debug(ctxOn, "enabled debug"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(h.handledRecords) != 1 {
+		t.Errorf("expected 1 record logged when debug is enabled in ctx, got %d", len(h.handledRecords))
 	}
 }
 
