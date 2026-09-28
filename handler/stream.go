@@ -94,7 +94,7 @@ func (s *Stream) HandleBatch(ctx context.Context, records []monogo.Record) error
 }
 
 // Close closes the stream writer if it implements io.Closer.
-func (s *Stream) Close() error {
+func (s *Stream) Close(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

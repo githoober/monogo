@@ -80,9 +80,9 @@ func (b *Buffer) HandleBatch(ctx context.Context, records []monogo.Record) error
 }
 
 // Close flushes buffer and closes wrapped handler.
-func (b *Buffer) Close() error {
-	err := b.Flush(context.Background())
-	if closeErr := b.handler.Close(); closeErr != nil {
+func (b *Buffer) Close(ctx context.Context) error {
+	err := b.Flush(ctx)
+	if closeErr := b.handler.Close(ctx); closeErr != nil {
 		err = closeErr
 	}
 	return err

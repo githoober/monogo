@@ -76,10 +76,10 @@ func (g *Group) HandleBatch(ctx context.Context, records []monogo.Record) error 
 }
 
 // Close closes all nested handlers.
-func (g *Group) Close() error {
+func (g *Group) Close(ctx context.Context) error {
 	var lastErr error
 	for _, h := range g.handlers {
-		if err := h.Close(); err != nil {
+		if err := h.Close(ctx); err != nil {
 			lastErr = err
 		}
 	}

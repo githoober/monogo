@@ -87,7 +87,7 @@ func main() {
 		handler.WithCompress(true),
 		handler.WithFormatter(formatter.NewJSON("")),
 	)
-	defer rotHandler.Close()
+	defer rotHandler.Close(ctx)
 
 	logger := monogo.New("app", []monogo.Handler{rotHandler}, nil)
 	logger.Info(ctx, "App initialized with rolling log files")
@@ -189,7 +189,7 @@ fileHandler := handler.NewStream(file, monogo.DEBUG)
 bufferHandler := handler.NewBuffer(fileHandler, 100, monogo.ERROR)
 
 logger := monogo.New("app", []monogo.Handler{bufferHandler}, nil)
-defer logger.Close() // Flushes remaining buffered logs on shutdown
+defer logger.Close(ctx) // Flushes remaining buffered logs on shutdown
 ```
 
 ### 2. `FingersCrossed` Handler

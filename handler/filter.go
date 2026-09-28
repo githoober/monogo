@@ -94,6 +94,6 @@ func (f *Filter) HandleBatch(ctx context.Context, records []monogo.Record) error
 }
 
 // Close closes wrapped handler.
-func (f *Filter) Close() error {
-	return f.handler.Close()
+func (f *Filter) Close(ctx context.Context) error {
+	return f.handler.Close(ctx)
 }

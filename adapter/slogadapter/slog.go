@@ -123,7 +123,7 @@ func (s *SlogHandler) Handle(ctx context.Context, record monogo.Record) error {
 	return s.slogHandler.Handle(ctx, r)
 }
 
-func (s *SlogHandler) Close() error {
+func (s *SlogHandler) Close(ctx context.Context) error {
 	return nil
 }
 

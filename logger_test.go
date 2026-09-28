@@ -25,7 +25,7 @@ func (m *mockHandler) Handle(ctx context.Context, record monogo.Record) error {
 	return nil
 }
 
-func (m *mockHandler) Close() error {
+func (m *mockHandler) Close(ctx context.Context) error {
 	m.closed = true
 	return nil
 }
@@ -225,7 +225,7 @@ func TestLoggerPipeline(t *testing.T) {
 	}
 
 	// Test Close
-	if err := logger.Close(); err != nil {
+	if err := logger.Close(context.Background()); err != nil {
 		t.Fatalf("failed to close: %v", err)
 	}
 	if !h.closed {

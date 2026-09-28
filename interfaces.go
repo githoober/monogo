@@ -6,7 +6,7 @@ import "context"
 type Handler interface {
 	IsHandling(level Level) bool
 	Handle(ctx context.Context, record Record) error
-	Close() error
+	Close(ctx context.Context) error
 }
 
 // BatchHandler is an optional interface for handlers capable of processing a batch of records

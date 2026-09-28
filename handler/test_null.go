@@ -72,7 +72,7 @@ func (t *Test) Reset() {
 }
 
 // Close resets the handler.
-func (t *Test) Close() error {
+func (t *Test) Close(ctx context.Context) error {
 	t.Reset()
 	return nil
 }
@@ -95,6 +95,6 @@ func (n *Null) Handle(ctx context.Context, record monogo.Record) error {
 }
 
 // Close does nothing.
-func (n *Null) Close() error {
+func (n *Null) Close(ctx context.Context) error {
 	return nil
 }

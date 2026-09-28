@@ -79,7 +79,7 @@ func TestRotatingFileHandler(t *testing.T) {
 		handler.WithMaxBackups(2),
 		handler.WithMaxAge(7),
 	)
-	defer rotH.Close()
+	defer rotH.Close(context.Background())
 
 	if !rotH.Bubble() {
 		t.Errorf("expected default Bubble to be true")
@@ -113,7 +113,7 @@ func TestRotatingFileHandlerBubbling(t *testing.T) {
 			MaxBackups: 2,
 		}),
 	)
-	defer rotH.Close()
+	defer rotH.Close(context.Background())
 
 	if rotH.Bubble() {
 		t.Errorf("expected Bubble to be false with WithBubble(false)")
@@ -411,7 +411,7 @@ func (n *nonBatchMockHandler) Handle(ctx context.Context, record monogo.Record) 
 	return nil
 }
 
-func (n *nonBatchMockHandler) Close() error {
+func (n *nonBatchMockHandler) Close(ctx context.Context) error {
 	return nil
 }
 

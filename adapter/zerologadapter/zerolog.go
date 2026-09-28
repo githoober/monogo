@@ -92,6 +92,6 @@ func (z *ZerologHandler) Handle(ctx context.Context, record monogo.Record) error
 	return nil
 }
 
-func (z *ZerologHandler) Close() error {
+func (z *ZerologHandler) Close(ctx context.Context) error {
 	return nil
 }

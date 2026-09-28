@@ -101,6 +101,6 @@ func (f *FingersCrossed) Reset() {
 }
 
 // Close flushes buffer if triggered and closes wrapped handler.
-func (f *FingersCrossed) Close() error {
-	return f.handler.Close()
+func (f *FingersCrossed) Close(ctx context.Context) error {
+	return f.handler.Close(ctx)
 }

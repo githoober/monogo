@@ -192,12 +192,12 @@ func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string
 	return l.Log(ctx, EMERGENCY, msg, ctxMap...)
 }
 
-func (l *Logger) Close() error {
+func (l *Logger) Close(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var lastErr error
 	for _, h := range l.handlers {
-		if err := h.Close(); err != nil {
+		if err := h.Close(ctx); err != nil {
 			lastErr = err
 		}
 	}
