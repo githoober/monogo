@@ -1,6 +1,8 @@
 package zerologadapter
 
 import (
+	"context"
+
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/handler"
 	"github.com/rs/zerolog"
@@ -55,13 +57,17 @@ func FromZerologLevel(lvl zerolog.Level) monogo.Level {
 	}
 }
 
-func (z *ZerologHandler) Handle(record monogo.Record) error {
+func (z *ZerologHandler) Handle(ctx context.Context, record monogo.Record) error {
 	record = z.ProcessRecord(record)
 	zLevel := ToZerologLevel(record.Level)
 
 	event := z.logger.WithLevel(zLevel)
 	if !event.Enabled() {
 		return nil
+	}
+
+	if ctx != nil {
+		event = event.Ctx(ctx)
 	}
 
 	if !record.Time.IsZero() {

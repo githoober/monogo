@@ -199,8 +199,8 @@ func TestZerologHandlerWithBufferFallback(t *testing.T) {
 	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 	bufH := handler.NewBuffer(zh, 2, monogo.ERROR)
 
-	_ = bufH.Handle(monogo.Record{Message: "zero batch 1", Level: monogo.INFO, Channel: "zero-chan"})
-	_ = bufH.Handle(monogo.Record{Message: "zero batch 2", Level: monogo.WARNING, Channel: "zero-chan"})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "zero batch 1", Level: monogo.INFO, Channel: "zero-chan"})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "zero batch 2", Level: monogo.WARNING, Channel: "zero-chan"})
 
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
 	if len(lines) != 2 {

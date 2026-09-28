@@ -213,8 +213,8 @@ func TestSlogHandlerWithBufferFallback(t *testing.T) {
 	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG)
 	bufH := handler.NewBuffer(monoH, 2, monogo.ERROR)
 
-	_ = bufH.Handle(monogo.Record{Message: "buffered 1", Level: monogo.INFO})
-	_ = bufH.Handle(monogo.Record{Message: "buffered 2", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "buffered 1", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "buffered 2", Level: monogo.INFO})
 
 	out := buf.String()
 	if !strings.Contains(out, `msg="buffered 1"`) {
@@ -242,5 +242,46 @@ func TestSlogHandlerWithProcessor(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, `extra.slog_tag=annotated`) {
 		t.Errorf("expected extra.slog_tag=annotated in slog output, got: %s", out)
+	}
+}
+
+type captureSlogHandler struct {
+	lastCtx context.Context
+}
+
+func (c *captureSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (c *captureSlogHandler) Handle(ctx context.Context, r slog.Record) error {
+	c.lastCtx = ctx
+	return nil
+}
+
+func (c *captureSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return c
+}
+
+func (c *captureSlogHandler) WithGroup(name string) slog.Handler {
+	return c
+}
+
+func TestSlogHandlerContextForwarding(t *testing.T) {
+	type testCtxKey struct{}
+	ctx := context.WithValue(context.Background(), testCtxKey{}, "ctx-val-456")
+
+	capture := &captureSlogHandler{}
+	monoH := slogadapter.NewSlogHandler(capture, monogo.DEBUG)
+	logger := monogo.New("test-chan", []monogo.Handler{monoH}, nil)
+
+	if err := logger.Info(ctx, "testing context forwarding"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capture.lastCtx == nil {
+		t.Fatalf("expected lastCtx to be received by slog.Handler")
+	}
+	if capture.lastCtx.Value(testCtxKey{}) != "ctx-val-456" {
+		t.Errorf("expected context value 'ctx-val-456', got: %v", capture.lastCtx.Value(testCtxKey{}))
 	}
 }

@@ -32,7 +32,7 @@ func TestStreamHandler(t *testing.T) {
 		Channel: "app",
 	}
 
-	if err := sh.Handle(rec); err != nil {
+	if err := sh.Handle(context.Background(), rec); err != nil {
 		t.Fatalf("Stream handle error: %v", err)
 	}
 
@@ -124,14 +124,14 @@ func TestFingersCrossedHandler(t *testing.T) {
 	testH := handler.NewTest(monogo.DEBUG)
 	fc := handler.NewFingersCrossed(testH, monogo.ERROR, 10)
 
-	_ = fc.Handle(monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
-	_ = fc.Handle(monogo.Record{Message: "info 1", Level: monogo.INFO})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "info 1", Level: monogo.INFO})
 
 	if len(testH.Records()) != 0 {
 		t.Fatalf("FingersCrossed should not have flushed records yet")
 	}
 
-	_ = fc.Handle(monogo.Record{Message: "error 1", Level: monogo.ERROR})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "error 1", Level: monogo.ERROR})
 
 	recs := testH.Records()
 	if len(recs) != 3 {
@@ -141,7 +141,7 @@ func TestFingersCrossedHandler(t *testing.T) {
 		t.Errorf("Unexpected flushed records order/content: %v", recs)
 	}
 
-	_ = fc.Handle(monogo.Record{Message: "debug 2 post-trigger", Level: monogo.DEBUG})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "debug 2 post-trigger", Level: monogo.DEBUG})
 	if len(testH.Records()) != 4 {
 		t.Errorf("Expected 4 records after post-trigger log, got %d", len(testH.Records()))
 	}
@@ -151,9 +151,9 @@ func TestFilterHandler(t *testing.T) {
 	testH := handler.NewTest(monogo.DEBUG)
 	filterH := handler.NewFilter(testH, monogo.INFO, monogo.ERROR)
 
-	filterH.Handle(monogo.Record{Message: "debug", Level: monogo.DEBUG})
-	filterH.Handle(monogo.Record{Message: "info", Level: monogo.INFO})
-	filterH.Handle(monogo.Record{Message: "crit", Level: monogo.CRITICAL})
+	filterH.Handle(context.Background(), monogo.Record{Message: "debug", Level: monogo.DEBUG})
+	filterH.Handle(context.Background(), monogo.Record{Message: "info", Level: monogo.INFO})
+	filterH.Handle(context.Background(), monogo.Record{Message: "crit", Level: monogo.CRITICAL})
 
 	recs := testH.Records()
 	if len(recs) != 1 || recs[0].Message != "info" {
@@ -166,8 +166,8 @@ func TestGroupHandler(t *testing.T) {
 	t2 := handler.NewTest(monogo.WARNING)
 	group := handler.NewGroup([]monogo.Handler{t1, t2})
 
-	group.Handle(monogo.Record{Message: "info msg", Level: monogo.INFO})
-	group.Handle(monogo.Record{Message: "warn msg", Level: monogo.WARNING})
+	group.Handle(context.Background(), monogo.Record{Message: "info msg", Level: monogo.INFO})
+	group.Handle(context.Background(), monogo.Record{Message: "warn msg", Level: monogo.WARNING})
 
 	if len(t1.Records()) != 2 {
 		t.Errorf("t1 should have 2 records, got %d", len(t1.Records()))
@@ -181,14 +181,14 @@ func TestBufferHandler(t *testing.T) {
 	testH := handler.NewTest(monogo.DEBUG)
 	bufH := handler.NewBuffer(testH, 3, monogo.ERROR)
 
-	bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
-	bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
+	bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO})
 
 	if len(testH.Records()) != 0 {
 		t.Errorf("buffer should not have flushed yet")
 	}
 
-	bufH.Handle(monogo.Record{Message: "msg 3 error", Level: monogo.ERROR})
+	bufH.Handle(context.Background(), monogo.Record{Message: "msg 3 error", Level: monogo.ERROR})
 	if len(testH.Records()) != 3 {
 		t.Errorf("buffer should have flushed 3 records, got %d", len(testH.Records()))
 	}
@@ -196,12 +196,12 @@ func TestBufferHandler(t *testing.T) {
 
 func TestNullAndTestHandler(t *testing.T) {
 	nullH := handler.NewNull()
-	if err := nullH.Handle(monogo.Record{Message: "test", Level: monogo.DEBUG}); err != nil {
+	if err := nullH.Handle(context.Background(), monogo.Record{Message: "test", Level: monogo.DEBUG}); err != nil {
 		t.Errorf("null handler handle error: %v", err)
 	}
 
 	testH := handler.NewTest(monogo.DEBUG)
-	testH.Handle(monogo.Record{Message: "find me", Level: monogo.INFO})
+	testH.Handle(context.Background(), monogo.Record{Message: "find me", Level: monogo.INFO})
 
 	found := testH.HasRecord(func(r monogo.Record) bool {
 		return r.Message == "find me"
@@ -271,9 +271,9 @@ func newBatchTrackingHandler(minLevel monogo.Level) *batchTrackingHandler {
 	}
 }
 
-func (b *batchTrackingHandler) HandleBatch(records []monogo.Record) error {
+func (b *batchTrackingHandler) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	b.batchCalls++
-	return b.Test.HandleBatch(records)
+	return b.Test.HandleBatch(ctx, records)
 }
 
 func TestStreamHandlerHandleBatch(t *testing.T) {
@@ -286,7 +286,7 @@ func TestStreamHandlerHandleBatch(t *testing.T) {
 		{Message: "error message", Level: monogo.ERROR}, // handled
 	}
 
-	if err := sh.HandleBatch(records); err != nil {
+	if err := sh.HandleBatch(context.Background(), records); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -306,15 +306,15 @@ func TestBufferHandlerFlushesViaHandleBatch(t *testing.T) {
 	inner := newBatchTrackingHandler(monogo.DEBUG)
 	bufH := handler.NewBuffer(inner, 10, monogo.ERROR)
 
-	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.DEBUG})
-	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.DEBUG})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO})
 
 	if inner.batchCalls != 0 {
 		t.Fatalf("expected 0 batch calls before flush, got %d", inner.batchCalls)
 	}
 
 	// Trigger flush via ERROR record
-	_ = bufH.Handle(monogo.Record{Message: "msg 3", Level: monogo.ERROR})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 3", Level: monogo.ERROR})
 
 	if inner.batchCalls != 1 {
 		t.Errorf("expected exactly 1 HandleBatch call on flush, got %d", inner.batchCalls)
@@ -328,15 +328,15 @@ func TestFingersCrossedFlushesViaHandleBatch(t *testing.T) {
 	inner := newBatchTrackingHandler(monogo.DEBUG)
 	fc := handler.NewFingersCrossed(inner, monogo.ERROR, 10)
 
-	_ = fc.Handle(monogo.Record{Message: "step 1", Level: monogo.INFO})
-	_ = fc.Handle(monogo.Record{Message: "step 2", Level: monogo.WARNING})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "step 1", Level: monogo.INFO})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "step 2", Level: monogo.WARNING})
 
 	if inner.batchCalls != 0 {
 		t.Fatalf("expected 0 batch calls before activation, got %d", inner.batchCalls)
 	}
 
 	// Trigger activation via ERROR
-	_ = fc.Handle(monogo.Record{Message: "failure", Level: monogo.ERROR})
+	_ = fc.Handle(context.Background(), monogo.Record{Message: "failure", Level: monogo.ERROR})
 
 	if inner.batchCalls != 1 {
 		t.Errorf("expected exactly 1 HandleBatch call on trigger, got %d", inner.batchCalls)
@@ -357,7 +357,7 @@ func TestFilterHandlerHandleBatch(t *testing.T) {
 		{Message: "error", Level: monogo.ERROR},     // filtered out
 	}
 
-	if err := filter.HandleBatch(records); err != nil {
+	if err := filter.HandleBatch(context.Background(), records); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -383,7 +383,7 @@ func TestGroupHandlerHandleBatch(t *testing.T) {
 		{Message: "group 2", Level: monogo.WARNING},
 	}
 
-	if err := group.HandleBatch(records); err != nil {
+	if err := group.HandleBatch(context.Background(), records); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -405,7 +405,7 @@ func (n *nonBatchMockHandler) IsHandling(level monogo.Level) bool {
 	return level >= n.minLevel
 }
 
-func (n *nonBatchMockHandler) Handle(record monogo.Record) error {
+func (n *nonBatchMockHandler) Handle(ctx context.Context, record monogo.Record) error {
 	n.handleCalls++
 	n.records = append(n.records, record)
 	return nil
@@ -419,9 +419,9 @@ func TestBufferFallbackForNonBatchHandler(t *testing.T) {
 	inner := &nonBatchMockHandler{minLevel: monogo.DEBUG}
 	bufH := handler.NewBuffer(inner, 3, monogo.ERROR)
 
-	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
-	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO})
-	_ = bufH.Handle(monogo.Record{Message: "msg 3", Level: monogo.INFO}) // flushes due to limit 3
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 3", Level: monogo.INFO}) // flushes due to limit 3
 
 	if inner.handleCalls != 3 {
 		t.Errorf("expected 3 fallback Handle calls, got %d", inner.handleCalls)
@@ -545,8 +545,8 @@ func TestBufferHandlerWithProcessor(t *testing.T) {
 		handler.WithProcessor(processor.Tag("buffer_tag", "buffered_val")),
 	)
 
-	_ = bufH.Handle(monogo.Record{Message: "msg 1", Level: monogo.INFO})
-	_ = bufH.Handle(monogo.Record{Message: "msg 2", Level: monogo.INFO}) // flushes due to limit 2
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO}) // flushes due to limit 2
 
 	recs := inner.Records()
 	if len(recs) != 2 {
@@ -566,13 +566,13 @@ func TestFilterHandlerWithProcessor(t *testing.T) {
 	)
 
 	// Below minLevel -> discarded, processor not run
-	_ = filterH.Handle(monogo.Record{Message: "info message", Level: monogo.INFO})
+	_ = filterH.Handle(context.Background(), monogo.Record{Message: "info message", Level: monogo.INFO})
 	if len(inner.Records()) != 0 {
 		t.Errorf("expected 0 records, got %d", len(inner.Records()))
 	}
 
 	// Within range -> processed and forwarded
-	_ = filterH.Handle(monogo.Record{Message: "warning message", Level: monogo.WARNING})
+	_ = filterH.Handle(context.Background(), monogo.Record{Message: "warning message", Level: monogo.WARNING})
 	recs := inner.Records()
 	if len(recs) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(recs))
@@ -590,7 +590,7 @@ func TestGroupHandlerWithProcessor(t *testing.T) {
 		handler.WithProcessor(processor.Tag("grouped", true)),
 	)
 
-	_ = groupH.Handle(monogo.Record{Message: "grouped message", Level: monogo.INFO})
+	_ = groupH.Handle(context.Background(), monogo.Record{Message: "grouped message", Level: monogo.INFO})
 
 	if len(h1.Records()) != 1 || len(h2.Records()) != 1 {
 		t.Fatalf("expected 1 record in each subhandler, got h1=%d, h2=%d", len(h1.Records()), len(h2.Records()))
@@ -609,14 +609,14 @@ func TestFingersCrossedHandlerWithProcessor(t *testing.T) {
 		handler.WithProcessor(processor.Tag("fc_annotated", "yes")),
 	)
 
-	_ = fcH.Handle(monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
-	_ = fcH.Handle(monogo.Record{Message: "info 2", Level: monogo.INFO})
+	_ = fcH.Handle(context.Background(), monogo.Record{Message: "debug 1", Level: monogo.DEBUG})
+	_ = fcH.Handle(context.Background(), monogo.Record{Message: "info 2", Level: monogo.INFO})
 	if len(inner.Records()) != 0 {
 		t.Errorf("expected 0 records before trigger, got %d", len(inner.Records()))
 	}
 
 	// Trigger with ERROR
-	_ = fcH.Handle(monogo.Record{Message: "error 3", Level: monogo.ERROR})
+	_ = fcH.Handle(context.Background(), monogo.Record{Message: "error 3", Level: monogo.ERROR})
 	recs := inner.Records()
 	if len(recs) != 3 {
 		t.Fatalf("expected 3 records after trigger, got %d", len(recs))
@@ -640,7 +640,7 @@ func TestBatchHandlingWithProcessor(t *testing.T) {
 		{Message: "batch msg 2", Level: monogo.WARNING},
 	}
 
-	if err := sh.HandleBatch(records); err != nil {
+	if err := sh.HandleBatch(context.Background(), records); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -672,7 +672,7 @@ func TestGroupHandlerHandleBatchWithProcessor(t *testing.T) {
 		{Message: "b2", Level: monogo.ERROR},
 	}
 
-	if err := groupH.HandleBatch(records); err != nil {
+	if err := groupH.HandleBatch(context.Background(), records); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 

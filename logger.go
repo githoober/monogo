@@ -151,7 +151,7 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 
 	for _, h := range handlers {
 		if h.IsHandling(level) {
-			if err := h.Handle(record); err != nil {
+			if err := h.Handle(ctx, record); err != nil {
 				return err
 			}
 			if bubbler, ok := h.(Bubbler); ok && !bubbler.Bubble() {

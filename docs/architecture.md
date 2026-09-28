@@ -29,10 +29,10 @@ Subpackages keep dependencies isolated so consumers importing only core Monogo d
 ### Decision
 Ambient contextual fields (such as `request_id`, `trace_id`, or `tenant_id`) can be stored in Go's standard `context.Context` using `monogo.WithContext(ctx, fields)` or `monogo.WithField(ctx, key, value)`.
 
-All log methods strictly require `context.Context` as their first parameter (e.g. `logger.Info(ctx, ...)`). Ambient fields are automatically extracted via `monogo.FromContext(ctx)` and merged into `Record.Context`.
+All log methods strictly require `context.Context` as their first parameter (e.g. `logger.Info(ctx, ...)`). Ambient fields are automatically extracted via `monogo.FromContext(ctx)` and merged into `Record.Context`. Furthermore, `ctx context.Context` is passed explicitly through the `Handler.Handle(ctx, record)` and `BatchHandler.HandleBatch(ctx, records)` contracts, allowing context-aware sinks (like `slogadapter.SlogHandler`) to receive the client context directly.
 
 ### Rationale
-In Go, `context.Context` is the standard mechanism for passing request-scoped values across API boundaries and goroutines. Requiring `context.Context` as the first argument prevents accidental context-dropping, eliminates duplicate method sets (such as `Info` vs `InfoContext`), and ensures log entries consistently carry ambient metadata.
+In Go, `context.Context` is the standard mechanism for passing request-scoped values across API boundaries and goroutines. Passing `context.Context` explicitly as the first argument prevents accidental context-dropping, avoids storing contexts inside data structs (`Record`), and ensures log entries consistently carry ambient metadata.
 
 ---
 

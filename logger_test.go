@@ -12,13 +12,15 @@ type mockHandler struct {
 	minLevel monogo.Level
 	records  []monogo.Record
 	closed   bool
+	lastCtx  context.Context
 }
 
 func (m *mockHandler) IsHandling(level monogo.Level) bool {
 	return level >= m.minLevel
 }
 
-func (m *mockHandler) Handle(record monogo.Record) error {
+func (m *mockHandler) Handle(ctx context.Context, record monogo.Record) error {
+	m.lastCtx = ctx
 	m.records = append(m.records, record)
 	return nil
 }
@@ -119,6 +121,10 @@ func TestAmbientContext(t *testing.T) {
 
 	if len(h.records) != 1 {
 		t.Fatalf("expected 1 record, got %d", len(h.records))
+	}
+
+	if h.lastCtx != ctx {
+		t.Errorf("expected handler to receive client ctx, got %v", h.lastCtx)
 	}
 
 	rec := h.records[0]

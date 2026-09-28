@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/githoober/monogo"
@@ -28,7 +29,7 @@ func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level,
 }
 
 // Handle buffers record and flushes if conditions are met.
-func (b *Buffer) Handle(record monogo.Record) error {
+func (b *Buffer) Handle(ctx context.Context, record monogo.Record) error {
 	record = b.ProcessRecord(record)
 
 	b.mu.Lock()
@@ -37,7 +38,7 @@ func (b *Buffer) Handle(record monogo.Record) error {
 	b.mu.Unlock()
 
 	if shouldFlush {
-		return b.Flush()
+		return b.Flush(ctx)
 	}
 	return nil
 }
@@ -45,7 +46,11 @@ func (b *Buffer) Handle(record monogo.Record) error {
 // Flush flushes buffered records to wrapped handler.
 // If the wrapped handler implements monogo.BatchHandler, it calls HandleBatch;
 // otherwise, it falls back to calling Handle for each record.
-func (b *Buffer) Flush() error {
+func (b *Buffer) Flush(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	b.mu.Lock()
 	if len(b.buffer) == 0 {
 		b.mu.Unlock()
@@ -56,12 +61,12 @@ func (b *Buffer) Flush() error {
 	b.mu.Unlock()
 
 	if bh, ok := b.handler.(monogo.BatchHandler); ok {
-		return bh.HandleBatch(records)
+		return bh.HandleBatch(ctx, records)
 	}
 
 	var lastErr error
 	for _, rec := range records {
-		if err := b.handler.Handle(rec); err != nil {
+		if err := b.handler.Handle(ctx, rec); err != nil {
 			lastErr = err
 		}
 	}
@@ -69,9 +74,9 @@ func (b *Buffer) Flush() error {
 }
 
 // HandleBatch buffers a batch of records and flushes if conditions are met.
-func (b *Buffer) HandleBatch(records []monogo.Record) error {
+func (b *Buffer) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	for _, rec := range records {
-		if err := b.Handle(rec); err != nil {
+		if err := b.Handle(ctx, rec); err != nil {
 			return err
 		}
 	}
@@ -80,7 +85,7 @@ func (b *Buffer) HandleBatch(records []monogo.Record) error {
 
 // Close flushes buffer and closes wrapped handler.
 func (b *Buffer) Close() error {
-	err := b.Flush()
+	err := b.Flush(context.Background())
 	if closeErr := b.handler.Close(); closeErr != nil {
 		err = closeErr
 	}

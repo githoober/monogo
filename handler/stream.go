@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"sync"
 
@@ -29,7 +30,7 @@ func NewStream(w io.Writer, level monogo.Level, opts ...Option) *Stream {
 }
 
 // Handle formats and writes the record to stream writer.
-func (s *Stream) Handle(record monogo.Record) error {
+func (s *Stream) Handle(ctx context.Context, record monogo.Record) error {
 	record = s.ProcessRecord(record)
 
 	s.mu.Lock()
@@ -50,7 +51,7 @@ func (s *Stream) Handle(record monogo.Record) error {
 }
 
 // HandleBatch formats and writes a batch of records to the stream writer in a single operation.
-func (s *Stream) HandleBatch(records []monogo.Record) error {
+func (s *Stream) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	handled := make([]monogo.Record, 0, len(records))
 	for _, rec := range records {
 		if s.IsHandling(rec.Level) {

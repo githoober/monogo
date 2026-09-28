@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/githoober/monogo"
@@ -37,7 +38,7 @@ func (f *FingersCrossed) IsHandling(level monogo.Level) bool {
 }
 
 // Handle buffers records until actionLevel is met or buffer capacity is exceeded, then flushes and forwards.
-func (f *FingersCrossed) Handle(record monogo.Record) error {
+func (f *FingersCrossed) Handle(ctx context.Context, record monogo.Record) error {
 	record = f.ProcessRecord(record)
 
 	f.mu.Lock()
@@ -45,7 +46,7 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 	// If already triggered, pass straight to nested handler
 	if f.triggered {
 		f.mu.Unlock()
-		return f.handler.Handle(record)
+		return f.handler.Handle(ctx, record)
 	}
 
 	// Check if record triggers activation
@@ -58,11 +59,11 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 
 		// Flush all accumulated records to wrapped handler
 		if bh, ok := f.handler.(monogo.BatchHandler); ok {
-			return bh.HandleBatch(buffered)
+			return bh.HandleBatch(ctx, buffered)
 		}
 		var lastErr error
 		for _, rec := range buffered {
-			if err := f.handler.Handle(rec); err != nil {
+			if err := f.handler.Handle(ctx, rec); err != nil {
 				lastErr = err
 			}
 		}
@@ -82,9 +83,9 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 }
 
 // HandleBatch processes a batch of records.
-func (f *FingersCrossed) HandleBatch(records []monogo.Record) error {
+func (f *FingersCrossed) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	for _, rec := range records {
-		if err := f.Handle(rec); err != nil {
+		if err := f.Handle(ctx, rec); err != nil {
 			return err
 		}
 	}

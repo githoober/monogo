@@ -1,9 +1,11 @@
 package monogo
 
+import "context"
+
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
 	IsHandling(level Level) bool
-	Handle(record Record) error
+	Handle(ctx context.Context, record Record) error
 	Close() error
 }
 
@@ -11,7 +13,7 @@ type Handler interface {
 // in a single atomic or optimized operation.
 type BatchHandler interface {
 	Handler
-	HandleBatch(records []Record) error
+	HandleBatch(ctx context.Context, records []Record) error
 }
 
 // Bubbler allows a handler to control whether a record bubbles down through the handler stack.

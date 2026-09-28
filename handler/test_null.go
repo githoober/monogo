@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/githoober/monogo"
@@ -22,7 +23,7 @@ func NewTest(level monogo.Level, opts ...Option) *Test {
 }
 
 // Handle stores the log record in memory.
-func (t *Test) Handle(record monogo.Record) error {
+func (t *Test) Handle(ctx context.Context, record monogo.Record) error {
 	record = t.ProcessRecord(record)
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -31,7 +32,7 @@ func (t *Test) Handle(record monogo.Record) error {
 }
 
 // HandleBatch stores all handled log records in memory.
-func (t *Test) HandleBatch(records []monogo.Record) error {
+func (t *Test) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, rec := range records {
@@ -89,7 +90,7 @@ func NewNull(opts ...Option) *Null {
 }
 
 // Handle does nothing.
-func (n *Null) Handle(record monogo.Record) error {
+func (n *Null) Handle(ctx context.Context, record monogo.Record) error {
 	return nil
 }
 

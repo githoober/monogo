@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/githoober/monogo"
 )
 
@@ -29,12 +31,12 @@ func (g *Group) IsHandling(level monogo.Level) bool {
 }
 
 // Handle sends record to all sub-handlers that handle the record level.
-func (g *Group) Handle(record monogo.Record) error {
+func (g *Group) Handle(ctx context.Context, record monogo.Record) error {
 	record = g.ProcessRecord(record)
 	var lastErr error
 	for _, h := range g.handlers {
 		if h.IsHandling(record.Level) {
-			if err := h.Handle(record); err != nil {
+			if err := h.Handle(ctx, record); err != nil {
 				lastErr = err
 			}
 		}
@@ -45,7 +47,7 @@ func (g *Group) Handle(record monogo.Record) error {
 // HandleBatch forwards a batch of records to all sub-handlers.
 // Sub-handlers implementing BatchHandler receive the batch directly;
 // others fall back to handling each handled record individually.
-func (g *Group) HandleBatch(records []monogo.Record) error {
+func (g *Group) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	if len(g.processors) > 0 {
 		processed := make([]monogo.Record, len(records))
 		for i, rec := range records {
@@ -57,13 +59,13 @@ func (g *Group) HandleBatch(records []monogo.Record) error {
 	var lastErr error
 	for _, h := range g.handlers {
 		if bh, ok := h.(monogo.BatchHandler); ok {
-			if err := bh.HandleBatch(records); err != nil {
+			if err := bh.HandleBatch(ctx, records); err != nil {
 				lastErr = err
 			}
 		} else {
 			for _, rec := range records {
 				if h.IsHandling(rec.Level) {
-					if err := h.Handle(rec); err != nil {
+					if err := h.Handle(ctx, rec); err != nil {
 						lastErr = err
 					}
 				}
