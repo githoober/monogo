@@ -2,7 +2,6 @@ package monogo
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -162,10 +161,6 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 	}
 
 	return nil
-}
-
-func (l *Logger) Logf(ctx context.Context, level Level, format string, args ...interface{}) error {
-	return l.Log(ctx, level, fmt.Sprintf(format, args...))
 }
 
 func (l *Logger) Debug(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
