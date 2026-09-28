@@ -1,12 +1,10 @@
 package monogo
 
 import (
-	"context"
 	"time"
 )
 
 type Record struct {
-	Ctx       context.Context        `json:"-"`
 	Message   string                 `json:"message"`
 	Level     Level                  `json:"level"`
 	Channel   string                 `json:"channel"`

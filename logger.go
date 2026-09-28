@@ -131,7 +131,6 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 	mergedCtx := mergeContexts(FromContext(ctx), mergeContexts(ctxMap...))
 
 	record := Record{
-		Ctx:     ctx,
 		Message: msg,
 		Level:   level,
 		Channel: l.name,
@@ -169,11 +168,6 @@ func (l *Logger) Logf(ctx context.Context, level Level, format string, args ...i
 	return l.Log(ctx, level, fmt.Sprintf(format, args...))
 }
 
-// LogContext is an alias for Log for backwards compatibility.
-func (l *Logger) LogContext(ctx context.Context, level Level, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Log(ctx, level, msg, ctxMap...)
-}
-
 func (l *Logger) Debug(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
 	return l.Log(ctx, DEBUG, msg, ctxMap...)
 }
@@ -204,39 +198,6 @@ func (l *Logger) Alert(ctx context.Context, msg string, ctxMap ...map[string]int
 
 func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
 	return l.Log(ctx, EMERGENCY, msg, ctxMap...)
-}
-
-// Context-suffixed aliases for backwards compatibility.
-func (l *Logger) DebugContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Debug(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) InfoContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Info(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) NoticeContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Notice(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) WarningContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Warning(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) ErrorContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Error(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) CriticalContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Critical(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) AlertContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Alert(ctx, msg, ctxMap...)
-}
-
-func (l *Logger) EmergencyContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.Emergency(ctx, msg, ctxMap...)
 }
 
 func (l *Logger) Close() error {

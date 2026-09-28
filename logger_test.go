@@ -122,9 +122,6 @@ func TestAmbientContext(t *testing.T) {
 	}
 
 	rec := h.records[0]
-	if rec.Ctx != ctx {
-		t.Errorf("expected record.Ctx to match passed context")
-	}
 	if rec.Context["request_id"] != "req-123" {
 		t.Errorf("ambient field request_id missing or invalid: %v", rec.Context["request_id"])
 	}

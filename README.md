@@ -5,7 +5,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 ## Features
 
 - **Generic & Backend-Agnostic**: Core Monogo logger operates through generic `Handler`, `Processor`, and `Formatter` interfaces without hard dependencies on any specific backend.
-- **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records when using `*Context` log methods.
+- **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
 - **Handlers**: Stream, RotatingFile, Filter, Group, Buffer, FingersCrossed, Test, Null.
