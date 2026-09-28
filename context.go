@@ -8,9 +8,6 @@ type contextKey struct{}
 type contextMap map[string]interface{}
 
 func WithContext(ctx context.Context, fields map[string]interface{}) context.Context {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if len(fields) == 0 {
 		return ctx
 	}

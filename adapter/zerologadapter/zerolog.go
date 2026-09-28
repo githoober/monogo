@@ -66,9 +66,7 @@ func (z *ZerologHandler) Handle(ctx context.Context, record monogo.Record) error
 		return nil
 	}
 
-	if ctx != nil {
-		event = event.Ctx(ctx)
-	}
+	event = event.Ctx(ctx)
 
 	if !record.Time.IsZero() {
 		event = event.Time(zerolog.TimestampFieldName, record.Time)

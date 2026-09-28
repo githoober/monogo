@@ -120,9 +120,6 @@ func (l *Logger) IsHandling(level Level) bool {
 }
 
 func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map[string]interface{}) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if !l.IsHandling(level) {
 		return nil
 	}

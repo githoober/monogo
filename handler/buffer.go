@@ -47,10 +47,6 @@ func (b *Buffer) Handle(ctx context.Context, record monogo.Record) error {
 // If the wrapped handler implements monogo.BatchHandler, it calls HandleBatch;
 // otherwise, it falls back to calling Handle for each record.
 func (b *Buffer) Flush(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	b.mu.Lock()
 	if len(b.buffer) == 0 {
 		b.mu.Unlock()
