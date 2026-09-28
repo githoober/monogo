@@ -20,7 +20,7 @@ func TestSlogHandler(t *testing.T) {
 
 	logger := monogo.New("test-channel", []monogo.Handler{monoH}, nil)
 
-	err := logger.Info("hello slog backend", map[string]interface{}{"user": "alice"})
+	err := logger.Info(context.Background(), "hello slog backend", map[string]interface{}{"user": "alice"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestSlogHandlerBubbling(t *testing.T) {
 	logger := monogo.New("slog-bubble-test", []monogo.Handler{h1, h2}, nil)
 
 	// INFO: h1 ignores, h2 receives
-	if err := logger.Info("info message"); err != nil {
+	if err := logger.Info(context.Background(), "info message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if buf1.Len() != 0 {
@@ -94,7 +94,7 @@ func TestSlogHandlerBubbling(t *testing.T) {
 	buf2.Reset()
 
 	// ERROR: h1 handles and halts propagation (bubble = false)
-	if err := logger.Error("error message"); err != nil {
+	if err := logger.Error(context.Background(), "error message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf1.String(), "error message") {
@@ -181,7 +181,7 @@ func TestSlogHandlerCustomLevels(t *testing.T) {
 	logger := monogo.New("custom-chan", []monogo.Handler{monoH}, nil)
 
 	// Notice
-	if err := logger.Notice("testing notice level"); err != nil {
+	if err := logger.Notice(context.Background(), "testing notice level"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out := buf.String()
@@ -195,7 +195,7 @@ func TestSlogHandlerCustomLevels(t *testing.T) {
 	buf.Reset()
 
 	// Critical
-	if err := logger.Critical("testing critical level"); err != nil {
+	if err := logger.Critical(context.Background(), "testing critical level"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	out = buf.String()
@@ -235,13 +235,54 @@ func TestSlogHandlerWithProcessor(t *testing.T) {
 	)
 
 	logger := monogo.New("slog-proc-test", []monogo.Handler{monoH}, nil)
-	if err := logger.Info("testing slog handler processor"); err != nil {
+	if err := logger.Info(context.Background(), "testing slog handler processor"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	out := buf.String()
 	if !strings.Contains(out, `extra.slog_tag=annotated`) {
 		t.Errorf("expected extra.slog_tag=annotated in slog output, got: %s", out)
+	}
+}
+
+type ctxCaptureHandler struct {
+	lastCtx context.Context
+}
+
+func (c *ctxCaptureHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return true
+}
+
+func (c *ctxCaptureHandler) Handle(ctx context.Context, r slog.Record) error {
+	c.lastCtx = ctx
+	return nil
+}
+
+func (c *ctxCaptureHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return c
+}
+
+func (c *ctxCaptureHandler) WithGroup(name string) slog.Handler {
+	return c
+}
+
+func TestSlogHandlerContextPropagation(t *testing.T) {
+	type testCtxKey struct{}
+	ctx := context.WithValue(context.Background(), testCtxKey{}, "test-value-123")
+
+	capture := &ctxCaptureHandler{}
+	monoH := slogadapter.NewSlogHandler(capture, monogo.DEBUG)
+	logger := monogo.New("ctx-test", []monogo.Handler{monoH}, nil)
+
+	if err := logger.Info(ctx, "testing context propagation"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if capture.lastCtx == nil {
+		t.Fatalf("expected lastCtx to be set")
+	}
+	if capture.lastCtx.Value(testCtxKey{}) != "test-value-123" {
+		t.Errorf("expected context value 'test-value-123', got: %v", capture.lastCtx.Value(testCtxKey{}))
 	}
 }
 

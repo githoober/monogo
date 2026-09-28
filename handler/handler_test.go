@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -46,7 +47,7 @@ func TestStreamHandlerJSONFile(t *testing.T) {
 
 	logger := monogo.New("json-file-app", []monogo.Handler{sh}, nil)
 
-	err := logger.Info("writing json logs", map[string]interface{}{"file": "app.log", "status": "ok"})
+	err := logger.Info(context.Background(), "writing json logs", map[string]interface{}{"file": "app.log", "status": "ok"})
 	if err != nil {
 		t.Fatalf("failed to log: %v", err)
 	}
@@ -86,7 +87,7 @@ func TestRotatingFileHandler(t *testing.T) {
 
 	logger := monogo.New("rot-app", []monogo.Handler{rotH}, nil)
 
-	err := logger.Info("rotating file log message", map[string]interface{}{"test": "rotation"})
+	err := logger.Info(context.Background(), "rotating file log message", map[string]interface{}{"test": "rotation"})
 	if err != nil {
 		t.Fatalf("unexpected error logging to rotating file: %v", err)
 	}
@@ -235,7 +236,7 @@ func TestStreamHandlerBubbling(t *testing.T) {
 	logger := monogo.New("bubble-stream-test", []monogo.Handler{sh1, sh2}, nil)
 
 	// INFO: sh1 does not handle, so sh2 receives it
-	if err := logger.Info("info msg"); err != nil {
+	if err := logger.Info(context.Background(), "info msg"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if buf1.Len() != 0 {
@@ -248,7 +249,7 @@ func TestStreamHandlerBubbling(t *testing.T) {
 	buf2.Reset()
 
 	// ERROR: sh1 handles it and stops bubbling (sh1.Bubble() == false), sh2 should not receive it
-	if err := logger.Error("error msg"); err != nil {
+	if err := logger.Error(context.Background(), "error msg"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf1.String(), "error msg") {
@@ -467,7 +468,7 @@ func TestStreamHandlerWithProcessor(t *testing.T) {
 	)
 
 	logger := monogo.New("test", []monogo.Handler{sh}, nil)
-	if err := logger.Info("stream processor test"); err != nil {
+	if err := logger.Info(context.Background(), "stream processor test"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -497,7 +498,7 @@ func TestHandlerProcessorIsolation(t *testing.T) {
 
 	logger := monogo.New("isolation-test", []monogo.Handler{h1, h2, h3}, nil)
 
-	if err := logger.Info("message to all handlers"); err != nil {
+	if err := logger.Info(context.Background(), "message to all handlers"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -630,7 +631,7 @@ func TestFingersCrossedHandlerWithProcessor(t *testing.T) {
 func TestBatchHandlingWithProcessor(t *testing.T) {
 	var buf bytes.Buffer
 	sh := handler.NewStream(&buf, monogo.DEBUG,
-		handler.WithFormatter(formatter.NewJSONBatch("")),
+		handler.WithFormatter(formatter.NewJSON("").WithBatchMode(formatter.BatchModeJSON)),
 		handler.WithProcessor(processor.Tag("batch_proc", "stream_batch")),
 	)
 

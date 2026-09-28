@@ -112,7 +112,7 @@ func TestAmbientContext(t *testing.T) {
 	h := &mockHandler{minLevel: monogo.INFO}
 	logger := monogo.New("ambient-app", []monogo.Handler{h}, nil)
 
-	err := logger.InfoContext(ctx, "processing order", map[string]interface{}{"order_id": 99})
+	err := logger.Info(ctx, "processing order", map[string]interface{}{"order_id": 99})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,6 +122,9 @@ func TestAmbientContext(t *testing.T) {
 	}
 
 	rec := h.records[0]
+	if rec.Ctx != ctx {
+		t.Errorf("expected record.Ctx to match passed context")
+	}
 	if rec.Context["request_id"] != "req-123" {
 		t.Errorf("ambient field request_id missing or invalid: %v", rec.Context["request_id"])
 	}
@@ -147,7 +150,7 @@ func TestChildLoggerWithNameAndChannel(t *testing.T) {
 		t.Errorf("expected child channel 'db-channel', got '%s'", childChan.Name())
 	}
 
-	_ = childChan.Info("db query executed")
+	_ = childChan.Info(context.Background(), "db query executed")
 	if len(h.records) != 1 {
 		t.Fatalf("expected 1 record in handler, got %d", len(h.records))
 	}
@@ -165,7 +168,7 @@ func TestLoggerPipeline(t *testing.T) {
 	}
 
 	// Should not handle DEBUG
-	if err := logger.Debug("debug msg"); err != nil {
+	if err := logger.Debug(context.Background(), "debug msg"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(h.records) != 0 {
@@ -173,7 +176,7 @@ func TestLoggerPipeline(t *testing.T) {
 	}
 
 	// Should handle INFO
-	if err := logger.Info("info msg", map[string]interface{}{"key": "value"}); err != nil {
+	if err := logger.Info(context.Background(), "info msg", map[string]interface{}{"key": "value"}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(h.records) != 1 {
@@ -195,7 +198,7 @@ func TestLoggerPipeline(t *testing.T) {
 	h2 := &mockHandler{minLevel: monogo.DEBUG}
 	logger.PushHandler(h2)
 
-	if err := logger.Debug("debug msg 2"); err != nil {
+	if err := logger.Debug(context.Background(), "debug msg 2"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(h2.records) != 1 {
@@ -209,7 +212,7 @@ func TestLoggerPipeline(t *testing.T) {
 
 	// Test With child logger
 	child := logger.With(map[string]interface{}{"env": "production"})
-	if err := child.Info("child msg"); err != nil {
+	if err := child.Info(context.Background(), "child msg"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -243,7 +246,7 @@ func TestHandlerBubblingStopsPropagation(t *testing.T) {
 	logger := monogo.New("bubble-test", []monogo.Handler{topHandler, bottomHandler}, nil)
 
 	// 1. Log INFO: topHandler does NOT handle it, so it should bypass topHandler and reach bottomHandler
-	if err := logger.Info("info message"); err != nil {
+	if err := logger.Info(context.Background(), "info message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(topHandler.records) != 0 {
@@ -254,7 +257,7 @@ func TestHandlerBubblingStopsPropagation(t *testing.T) {
 	}
 
 	// 2. Log ERROR: topHandler handles it and bubble = false, so bottomHandler should NOT receive it
-	if err := logger.Error("error message"); err != nil {
+	if err := logger.Error(context.Background(), "error message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(topHandler.records) != 1 {
@@ -281,7 +284,7 @@ func TestHandlerBubblingContinuesWhenTrue(t *testing.T) {
 	logger := monogo.New("bubble-test-continue", []monogo.Handler{topHandler, bottomHandler}, nil)
 
 	// Log ERROR: both handlers handle it because topHandler has bubble = true
-	if err := logger.Error("error message"); err != nil {
+	if err := logger.Error(context.Background(), "error message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(topHandler.records) != 1 {

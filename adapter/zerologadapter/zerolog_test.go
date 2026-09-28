@@ -2,6 +2,7 @@ package zerologadapter_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -20,7 +21,7 @@ func TestZerologHandler(t *testing.T) {
 	zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 	logger := monogo.New("zerolog-chan", []monogo.Handler{zh}, nil)
 
-	err := logger.Error("something failed", map[string]interface{}{"retry_count": 3})
+	err := logger.Error(context.Background(), "something failed", map[string]interface{}{"retry_count": 3})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestZerologHandlerBubbling(t *testing.T) {
 	logger := monogo.New("zerolog-bubble-test", []monogo.Handler{h1, h2}, nil)
 
 	// INFO: h1 ignores, h2 receives
-	if err := logger.Info("info message"); err != nil {
+	if err := logger.Info(context.Background(), "info message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if buf1.Len() != 0 {
@@ -78,7 +79,7 @@ func TestZerologHandlerBubbling(t *testing.T) {
 	buf2.Reset()
 
 	// ERROR: h1 handles and halts propagation (bubble = false)
-	if err := logger.Error("error message"); err != nil {
+	if err := logger.Error(context.Background(), "error message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(buf1.String(), "error message") {
@@ -143,7 +144,7 @@ func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
 	logger := monogo.New("zerolog-severity-test", []monogo.Handler{zh}, nil)
 
 	// Notice: should map to "info" with severity "NOTICE"
-	if err := logger.Notice("notice message"); err != nil {
+	if err := logger.Notice(context.Background(), "notice message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var res map[string]interface{}
@@ -160,7 +161,7 @@ func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
 	buf.Reset()
 
 	// Critical: must NOT exit, should map to "error" with severity "CRITICAL"
-	if err := logger.Critical("critical message"); err != nil {
+	if err := logger.Critical(context.Background(), "critical message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	res = nil
@@ -177,7 +178,7 @@ func TestZerologHandlerSeverityAndNoFatal(t *testing.T) {
 	buf.Reset()
 
 	// Regular Error: should NOT have extra "severity" field
-	if err := logger.Error("standard error message"); err != nil {
+	if err := logger.Error(context.Background(), "standard error message"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	res = nil
@@ -217,7 +218,7 @@ func TestZerologHandlerWithProcessor(t *testing.T) {
 	)
 
 	logger := monogo.New("zerolog-proc-test", []monogo.Handler{zh}, nil)
-	if err := logger.Info("testing zerolog handler processor"); err != nil {
+	if err := logger.Info(context.Background(), "testing zerolog handler processor"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
