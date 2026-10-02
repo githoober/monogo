@@ -38,7 +38,7 @@ Core components are defined as small, focused Go interfaces (`Handler`, `Process
 The root `monogo` package relies exclusively on the Go standard library. Third-party or framework-specific integrations reside in isolated subpackages (`adapter/slogadapter`, `adapter/zerologadapter`), ensuring consumers importing core Monogo pull in zero unwanted dependencies.
 
 ### `context.Context` Ambient Field Propagation
-Monogo integrates directly with Go's standard `context.Context` (`monogo.WithField`, `monogo.WithContext`, `monogo.FromContext`). Contextual fields travel implicitly across API boundaries and goroutines and are automatically merged into log records when using `*Context` log methods.
+Monogo integrates directly with Go's standard `context.Context` (`monogo.WithField`, `monogo.WithContext`, `monogo.FromContext`). Contextual fields travel implicitly across API boundaries and goroutines and are automatically merged into log records across all Logger level methods.
 
 ### Bidirectional `log/slog` Compatibility
 Monogo provides full bidirectional interoperability with Go 1.21+ `log/slog`:
