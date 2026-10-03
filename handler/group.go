@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/githoober/monogo"
 )
 
@@ -19,9 +21,9 @@ func NewGroup(handlers []monogo.Handler, opts ...Option) *Group {
 }
 
 // IsHandling returns true if any nested handler handles the log level.
-func (g *Group) IsHandling(level monogo.Level) bool {
+func (g *Group) IsHandling(ctx context.Context, level monogo.Level) bool {
 	for _, h := range g.handlers {
-		if h.IsHandling(level) {
+		if h.IsHandling(ctx, level) {
 			return true
 		}
 	}
@@ -29,11 +31,12 @@ func (g *Group) IsHandling(level monogo.Level) bool {
 }
 
 // Handle sends record to all sub-handlers that handle the record level.
-func (g *Group) Handle(record monogo.Record) error {
+func (g *Group) Handle(ctx context.Context, record monogo.Record) error {
+	record = g.ProcessRecord(record)
 	var lastErr error
 	for _, h := range g.handlers {
-		if h.IsHandling(record.Level) {
-			if err := h.Handle(record); err != nil {
+		if h.IsHandling(ctx, record.Level) {
+			if err := h.Handle(ctx, record); err != nil {
 				lastErr = err
 			}
 		}
@@ -44,17 +47,25 @@ func (g *Group) Handle(record monogo.Record) error {
 // HandleBatch forwards a batch of records to all sub-handlers.
 // Sub-handlers implementing BatchHandler receive the batch directly;
 // others fall back to handling each handled record individually.
-func (g *Group) HandleBatch(records []monogo.Record) error {
+func (g *Group) HandleBatch(ctx context.Context, records []monogo.Record) error {
+	if len(g.processors) > 0 {
+		processed := make([]monogo.Record, len(records))
+		for i, rec := range records {
+			processed[i] = g.ProcessRecord(rec)
+		}
+		records = processed
+	}
+
 	var lastErr error
 	for _, h := range g.handlers {
 		if bh, ok := h.(monogo.BatchHandler); ok {
-			if err := bh.HandleBatch(records); err != nil {
+			if err := bh.HandleBatch(ctx, records); err != nil {
 				lastErr = err
 			}
 		} else {
 			for _, rec := range records {
-				if h.IsHandling(rec.Level) {
-					if err := h.Handle(rec); err != nil {
+				if h.IsHandling(ctx, rec.Level) {
+					if err := h.Handle(ctx, rec); err != nil {
 						lastErr = err
 					}
 				}
@@ -65,10 +76,10 @@ func (g *Group) HandleBatch(records []monogo.Record) error {
 }
 
 // Close closes all nested handlers.
-func (g *Group) Close() error {
+func (g *Group) Close(ctx context.Context) error {
 	var lastErr error
 	for _, h := range g.handlers {
-		if err := h.Close(); err != nil {
+		if err := h.Close(ctx); err != nil {
 			lastErr = err
 		}
 	}

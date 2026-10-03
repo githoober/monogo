@@ -1,17 +1,19 @@
 package monogo
 
+import "context"
+
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
-	IsHandling(level Level) bool
-	Handle(record Record) error
-	Close() error
+	IsHandling(ctx context.Context, level Level) bool
+	Handle(ctx context.Context, record Record) error
+	Close(ctx context.Context) error
 }
 
 // BatchHandler is an optional interface for handlers capable of processing a batch of records
 // in a single atomic or optimized operation.
 type BatchHandler interface {
 	Handler
-	HandleBatch(records []Record) error
+	HandleBatch(ctx context.Context, records []Record) error
 }
 
 // Bubbler allows a handler to control whether a record bubbles down through the handler stack.
@@ -44,3 +46,11 @@ type BatchFormatter interface {
 	Formatter
 	FormatBatch(records []Record) ([]byte, error)
 }
+
+// ProcessableHandler represents a handler equipped with its own processor pipeline.
+type ProcessableHandler interface {
+	Handler
+	Processors() []Processor
+	ProcessRecord(record Record) Record
+}
+

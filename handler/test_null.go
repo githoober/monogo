@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/githoober/monogo"
@@ -22,7 +23,8 @@ func NewTest(level monogo.Level, opts ...Option) *Test {
 }
 
 // Handle stores the log record in memory.
-func (t *Test) Handle(record monogo.Record) error {
+func (t *Test) Handle(ctx context.Context, record monogo.Record) error {
+	record = t.ProcessRecord(record)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.records = append(t.records, record)
@@ -30,12 +32,12 @@ func (t *Test) Handle(record monogo.Record) error {
 }
 
 // HandleBatch stores all handled log records in memory.
-func (t *Test) HandleBatch(records []monogo.Record) error {
+func (t *Test) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	for _, rec := range records {
-		if t.IsHandling(rec.Level) {
-			t.records = append(t.records, rec)
+		if t.IsHandling(ctx, rec.Level) {
+			t.records = append(t.records, t.ProcessRecord(rec))
 		}
 	}
 	return nil
@@ -70,7 +72,7 @@ func (t *Test) Reset() {
 }
 
 // Close resets the handler.
-func (t *Test) Close() error {
+func (t *Test) Close(ctx context.Context) error {
 	t.Reset()
 	return nil
 }
@@ -88,11 +90,11 @@ func NewNull(opts ...Option) *Null {
 }
 
 // Handle does nothing.
-func (n *Null) Handle(record monogo.Record) error {
+func (n *Null) Handle(ctx context.Context, record monogo.Record) error {
 	return nil
 }
 
 // Close does nothing.
-func (n *Null) Close() error {
+func (n *Null) Close(ctx context.Context) error {
 	return nil
 }

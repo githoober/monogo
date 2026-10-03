@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/githoober/monogo"
 )
 
@@ -33,17 +35,17 @@ func NewFilterFunc(handler monogo.Handler, predicate func(monogo.Record) bool, o
 }
 
 // IsHandling checks if wrapped handler accepts record and record meets filter condition.
-func (f *Filter) IsHandling(level monogo.Level) bool {
+func (f *Filter) IsHandling(ctx context.Context, level monogo.Level) bool {
 	if f.predicate == nil {
 		if level < f.minLevel || level > f.maxLevel {
 			return false
 		}
 	}
-	return f.handler.IsHandling(level)
+	return f.handler.IsHandling(ctx, level)
 }
 
 // Handle routes handling to inner handler if predicate/level check succeeds.
-func (f *Filter) Handle(record monogo.Record) error {
+func (f *Filter) Handle(ctx context.Context, record monogo.Record) error {
 	if f.predicate != nil {
 		if !f.predicate(record) {
 			return nil
@@ -54,22 +56,23 @@ func (f *Filter) Handle(record monogo.Record) error {
 		}
 	}
 
-	return f.handler.Handle(record)
+	record = f.ProcessRecord(record)
+	return f.handler.Handle(ctx, record)
 }
 
 // HandleBatch filters records and forwards matching records to the wrapped handler.
 // If the wrapped handler implements monogo.BatchHandler, it calls HandleBatch;
 // otherwise, it falls back to calling Handle for each matching record.
-func (f *Filter) HandleBatch(records []monogo.Record) error {
+func (f *Filter) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	filtered := make([]monogo.Record, 0, len(records))
 	for _, rec := range records {
 		if f.predicate != nil {
 			if f.predicate(rec) {
-				filtered = append(filtered, rec)
+				filtered = append(filtered, f.ProcessRecord(rec))
 			}
 		} else {
 			if rec.Level >= f.minLevel && rec.Level <= f.maxLevel {
-				filtered = append(filtered, rec)
+				filtered = append(filtered, f.ProcessRecord(rec))
 			}
 		}
 	}
@@ -78,12 +81,12 @@ func (f *Filter) HandleBatch(records []monogo.Record) error {
 	}
 
 	if bh, ok := f.handler.(monogo.BatchHandler); ok {
-		return bh.HandleBatch(filtered)
+		return bh.HandleBatch(ctx, filtered)
 	}
 
 	var lastErr error
 	for _, rec := range filtered {
-		if err := f.handler.Handle(rec); err != nil {
+		if err := f.handler.Handle(ctx, rec); err != nil {
 			lastErr = err
 		}
 	}
@@ -91,6 +94,6 @@ func (f *Filter) HandleBatch(records []monogo.Record) error {
 }
 
 // Close closes wrapped handler.
-func (f *Filter) Close() error {
-	return f.handler.Close()
+func (f *Filter) Close(ctx context.Context) error {
+	return f.handler.Close(ctx)
 }

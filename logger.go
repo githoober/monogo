@@ -2,7 +2,6 @@ package monogo
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -109,31 +108,23 @@ func (l *Logger) WithChannel(channel string) *Logger {
 	return l.WithName(channel)
 }
 
-func (l *Logger) IsHandling(level Level) bool {
+func (l *Logger) IsHandling(ctx context.Context, level Level) bool {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 	for _, h := range l.handlers {
-		if h.IsHandling(level) {
+		if h.IsHandling(ctx, level) {
 			return true
 		}
 	}
 	return false
 }
 
-func (l *Logger) Log(level Level, msg string, ctx map[string]interface{}) error {
-	return l.LogContext(context.Background(), level, msg, ctx)
-}
-
-func (l *Logger) Logf(level Level, format string, args ...interface{}) error {
-	return l.Log(level, fmt.Sprintf(format, args...), nil)
-}
-
-func (l *Logger) LogContext(ctx context.Context, level Level, msg string, ctxMap map[string]interface{}) error {
-	if !l.IsHandling(level) {
+func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map[string]interface{}) error {
+	if !l.IsHandling(ctx, level) {
 		return nil
 	}
 
-	mergedCtx := mergeContexts(FromContext(ctx), ctxMap)
+	mergedCtx := mergeContexts(FromContext(ctx), mergeContexts(ctxMap...))
 
 	record := Record{
 		Message: msg,
@@ -156,8 +147,8 @@ func (l *Logger) LogContext(ctx context.Context, level Level, msg string, ctxMap
 	}
 
 	for _, h := range handlers {
-		if h.IsHandling(level) {
-			if err := h.Handle(record); err != nil {
+		if h.IsHandling(ctx, level) {
+			if err := h.Handle(ctx, record); err != nil {
 				return err
 			}
 			if bubbler, ok := h.(Bubbler); ok && !bubbler.Bubble() {
@@ -169,76 +160,44 @@ func (l *Logger) LogContext(ctx context.Context, level Level, msg string, ctxMap
 	return nil
 }
 
-func (l *Logger) Debug(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(DEBUG, msg, mergeContexts(ctx...))
+func (l *Logger) Debug(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, DEBUG, msg, ctxMap...)
 }
 
-func (l *Logger) Info(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(INFO, msg, mergeContexts(ctx...))
+func (l *Logger) Info(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, INFO, msg, ctxMap...)
 }
 
-func (l *Logger) Notice(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(NOTICE, msg, mergeContexts(ctx...))
+func (l *Logger) Notice(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, NOTICE, msg, ctxMap...)
 }
 
-func (l *Logger) Warning(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(WARNING, msg, mergeContexts(ctx...))
+func (l *Logger) Warning(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, WARNING, msg, ctxMap...)
 }
 
-func (l *Logger) Error(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(ERROR, msg, mergeContexts(ctx...))
+func (l *Logger) Error(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, ERROR, msg, ctxMap...)
 }
 
-func (l *Logger) Critical(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(CRITICAL, msg, mergeContexts(ctx...))
+func (l *Logger) Critical(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, CRITICAL, msg, ctxMap...)
 }
 
-func (l *Logger) Alert(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(ALERT, msg, mergeContexts(ctx...))
+func (l *Logger) Alert(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, ALERT, msg, ctxMap...)
 }
 
-func (l *Logger) Emergency(msg string, ctx ...map[string]interface{}) error {
-	return l.Log(EMERGENCY, msg, mergeContexts(ctx...))
+func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
+	return l.Log(ctx, EMERGENCY, msg, ctxMap...)
 }
 
-func (l *Logger) DebugContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, DEBUG, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) InfoContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, INFO, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) NoticeContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, NOTICE, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) WarningContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, WARNING, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) ErrorContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, ERROR, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) CriticalContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, CRITICAL, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) AlertContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, ALERT, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) EmergencyContext(ctx context.Context, msg string, ctxMap ...map[string]interface{}) error {
-	return l.LogContext(ctx, EMERGENCY, msg, mergeContexts(ctxMap...))
-}
-
-func (l *Logger) Close() error {
+func (l *Logger) Close(ctx context.Context) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var lastErr error
 	for _, h := range l.handlers {
-		if err := h.Close(); err != nil {
+		if err := h.Close(ctx); err != nil {
 			lastErr = err
 		}
 	}

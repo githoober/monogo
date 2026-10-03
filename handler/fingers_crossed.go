@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 
 	"github.com/githoober/monogo"
@@ -32,18 +33,20 @@ func NewFingersCrossed(handler monogo.Handler, actionLevel monogo.Level, bufferS
 }
 
 // IsHandling returns true for all levels >= handler's minimum level.
-func (f *FingersCrossed) IsHandling(level monogo.Level) bool {
-	return f.handler.IsHandling(level)
+func (f *FingersCrossed) IsHandling(ctx context.Context, level monogo.Level) bool {
+	return f.handler.IsHandling(ctx, level)
 }
 
 // Handle buffers records until actionLevel is met or buffer capacity is exceeded, then flushes and forwards.
-func (f *FingersCrossed) Handle(record monogo.Record) error {
+func (f *FingersCrossed) Handle(ctx context.Context, record monogo.Record) error {
+	record = f.ProcessRecord(record)
+
 	f.mu.Lock()
 
 	// If already triggered, pass straight to nested handler
 	if f.triggered {
 		f.mu.Unlock()
-		return f.handler.Handle(record)
+		return f.handler.Handle(ctx, record)
 	}
 
 	// Check if record triggers activation
@@ -56,11 +59,11 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 
 		// Flush all accumulated records to wrapped handler
 		if bh, ok := f.handler.(monogo.BatchHandler); ok {
-			return bh.HandleBatch(buffered)
+			return bh.HandleBatch(ctx, buffered)
 		}
 		var lastErr error
 		for _, rec := range buffered {
-			if err := f.handler.Handle(rec); err != nil {
+			if err := f.handler.Handle(ctx, rec); err != nil {
 				lastErr = err
 			}
 		}
@@ -80,9 +83,9 @@ func (f *FingersCrossed) Handle(record monogo.Record) error {
 }
 
 // HandleBatch processes a batch of records.
-func (f *FingersCrossed) HandleBatch(records []monogo.Record) error {
+func (f *FingersCrossed) HandleBatch(ctx context.Context, records []monogo.Record) error {
 	for _, rec := range records {
-		if err := f.Handle(rec); err != nil {
+		if err := f.Handle(ctx, rec); err != nil {
 			return err
 		}
 	}
@@ -98,6 +101,6 @@ func (f *FingersCrossed) Reset() {
 }
 
 // Close flushes buffer if triggered and closes wrapped handler.
-func (f *FingersCrossed) Close() error {
-	return f.handler.Close()
+func (f *FingersCrossed) Close(ctx context.Context) error {
+	return f.handler.Close(ctx)
 }

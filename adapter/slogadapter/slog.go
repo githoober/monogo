@@ -93,9 +93,18 @@ func NewSlogHandler(h slog.Handler, minLevel monogo.Level, opts ...handler.Optio
 	}
 }
 
-func (s *SlogHandler) Handle(record monogo.Record) error {
+// IsHandling returns true if both BaseHandler minimum level and wrapped slog.Handler accept the level with ctx.
+func (s *SlogHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
+	if !s.BaseHandler.IsHandling(ctx, level) {
+		return false
+	}
+	return s.slogHandler.Enabled(ctx, ToSlogLevel(level))
+}
+
+func (s *SlogHandler) Handle(ctx context.Context, record monogo.Record) error {
+	record = s.ProcessRecord(record)
 	slogLevel := ToSlogLevel(record.Level)
-	if !s.slogHandler.Enabled(context.Background(), slogLevel) {
+	if !s.slogHandler.Enabled(ctx, slogLevel) {
 		return nil
 	}
 
@@ -119,10 +128,10 @@ func (s *SlogHandler) Handle(record monogo.Record) error {
 	r := slog.NewRecord(record.Time, slogLevel, record.Message, 0)
 	r.AddAttrs(attrs...)
 
-	return s.slogHandler.Handle(context.Background(), r)
+	return s.slogHandler.Handle(ctx, r)
 }
 
-func (s *SlogHandler) Close() error {
+func (s *SlogHandler) Close(ctx context.Context) error {
 	return nil
 }
 
@@ -147,7 +156,7 @@ func NewMonologSlogBridge(logger *monogo.Logger) *MonogoSlogBridge {
 }
 
 func (m *MonogoSlogBridge) Enabled(ctx context.Context, level slog.Level) bool {
-	return m.logger.IsHandling(FromSlogLevel(level))
+	return m.logger.IsHandling(ctx, FromSlogLevel(level))
 }
 
 func (m *MonogoSlogBridge) Handle(ctx context.Context, r slog.Record) error {
@@ -163,7 +172,7 @@ func (m *MonogoSlogBridge) Handle(ctx context.Context, r slog.Record) error {
 	})
 
 	lvl := FromSlogLevel(r.Level)
-	return m.logger.LogContext(ctx, lvl, r.Message, ctxMap)
+	return m.logger.Log(ctx, lvl, r.Message, ctxMap)
 }
 
 func (m *MonologSlogBridge) addAttrToMap(target map[string]interface{}, attr slog.Attr) {
