@@ -30,8 +30,11 @@ A destination component responsible for receiving a `Record` and outputting or f
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
 - `Caller`: File, line, and function caller info.
 - `Hostname`: OS hostname.
+- `ProcessId`: OS process ID (`os.Getpid()`).
 - `Memory`: Runtime memory statistics.
 - `UID`: Unique invocation request ID.
+- `Git`: Git commit hash, branch, time, and dirty status.
+- `Env` / `EnvMap`: Environment variables.
 - `Tag`: Fixed key-value tag.
 
 ### Formatter

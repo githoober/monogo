@@ -12,7 +12,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
-- **Processors**: Enriched logging metadata (Caller, Hostname, Memory stats, Tags, Unique request ID/UID).
+- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Environment variables, Memory stats, Tags, Unique request ID/UID).
 - **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
@@ -203,6 +203,20 @@ logger.Info(ctx, "User logged in", map[string]interface{}{"user_id": 42})
 
 ### Handler Isolation
 When per-handler processors are configured, the record is automatically cloned prior to executing the handler's processor pipeline. Any mutations made by a handler's processor (e.g. adding metadata, redacting sensitive fields, or modifying extra context) remain strictly isolated to that handler and will never leak to subsequent handlers down the logger stack.
+
+## Built-in Processors
+
+Processors enrich log records with contextual and system diagnostic metadata before formatting and dispatching. Monogo includes the following built-in processors:
+
+- **`processor.Caller(skipFrames)`**: Injects calling source file, line number, and function name into `Extra["caller"]`.
+- **`processor.Hostname()`**: Injects the OS hostname into `Extra["hostname"]`.
+- **`processor.ProcessId()`**: Injects the current OS process ID (`os.Getpid()`) into `Extra["pid"]`.
+- **`processor.Memory()`**: Injects runtime memory allocation statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]`.
+- **`processor.UID()`**: Generates a random unique hex request/invocation identifier in `Extra["uid"]`.
+- **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
+- **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]`.
+- **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
+- **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra`.
 
 ## Batch Processing & Buffering
 
