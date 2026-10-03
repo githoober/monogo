@@ -1,0 +1,161 @@
+package handler
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/githoober/monogo"
+)
+
+// WhatFailureCallback is called whenever a nested handler encounters an error or panic in WhatFailureGroup.
+// This allows observability (logging, telemetry, metrics) without propagating the error up the stack.
+type WhatFailureCallback func(err error, h monogo.Handler)
+
+// WithWhatFailureCallback registers an error callback invoked whenever an inner handler fails or panics.
+func WithWhatFailureCallback(fn WhatFailureCallback) Option {
+	return func(o *options) {
+		o.whatFailureCallback = fn
+	}
+}
+
+// WhatFailureGroup forwards log records to a slice of handlers, safely swallowing and suppressing
+// any errors or panics returned by individual sub-handlers during Handle, HandleBatch, or Close.
+// This ensures failures in secondary or external logging sinks (e.g., remote services, webhooks, Slack,
+// or Elasticsearch) never interrupt primary logging or crash application workflows.
+type WhatFailureGroup struct {
+	BaseHandler
+	handlers []monogo.Handler
+	onError  WhatFailureCallback
+}
+
+// WhatFailureGroupHandler is an alias for WhatFailureGroup.
+type WhatFailureGroupHandler = WhatFailureGroup
+
+// Compile-time interface assertions.
+var (
+	_ monogo.Handler            = (*WhatFailureGroup)(nil)
+	_ monogo.BatchHandler       = (*WhatFailureGroup)(nil)
+	_ monogo.Bubbler            = (*WhatFailureGroup)(nil)
+	_ monogo.ProcessableHandler = (*WhatFailureGroup)(nil)
+)
+
+// NewWhatFailureGroup creates a WhatFailureGroup handler wrapping the given handlers with optional configuration options.
+func NewWhatFailureGroup(handlers []monogo.Handler, opts ...Option) *WhatFailureGroup {
+	o := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	handlersCopy := make([]monogo.Handler, len(handlers))
+	copy(handlersCopy, handlers)
+
+	return &WhatFailureGroup{
+		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		handlers:    handlersCopy,
+		onError:     o.whatFailureCallback,
+	}
+}
+
+// Handlers returns a copy of the nested handlers.
+func (w *WhatFailureGroup) Handlers() []monogo.Handler {
+	cp := make([]monogo.Handler, len(w.handlers))
+	copy(cp, w.handlers)
+	return cp
+}
+
+// IsHandling returns true if any nested handler handles the log level.
+func (w *WhatFailureGroup) IsHandling(ctx context.Context, level monogo.Level) bool {
+	for _, h := range w.handlers {
+		if h.IsHandling(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+// Handle sends record to all sub-handlers that handle the record level.
+// Any error or panic returned by a sub-handler is suppressed and forwarded to the optional callback.
+// Always returns nil.
+func (w *WhatFailureGroup) Handle(ctx context.Context, record monogo.Record) error {
+	record = w.ProcessRecord(record)
+	for _, h := range w.handlers {
+		if h.IsHandling(ctx, record.Level) {
+			invokeSafe(h, w.onError, func() error {
+				return h.Handle(ctx, record)
+			})
+		}
+	}
+	return nil
+}
+
+// HandleBatch forwards a batch of records to all sub-handlers.
+// Sub-handlers implementing BatchHandler receive the batch directly;
+// others fall back to handling each handled record individually.
+// Any errors or panics returned by sub-handlers are suppressed and forwarded to the optional callback.
+// Always returns nil.
+func (w *WhatFailureGroup) HandleBatch(ctx context.Context, records []monogo.Record) error {
+	if len(w.processors) > 0 {
+		processed := make([]monogo.Record, len(records))
+		for i, rec := range records {
+			processed[i] = w.ProcessRecord(rec)
+		}
+		records = processed
+	}
+
+	for _, h := range w.handlers {
+		if bh, ok := h.(monogo.BatchHandler); ok {
+			invokeSafe(h, w.onError, func() error {
+				return bh.HandleBatch(ctx, records)
+			})
+		} else {
+			for _, rec := range records {
+				if h.IsHandling(ctx, rec.Level) {
+					invokeSafe(h, w.onError, func() error {
+						return h.Handle(ctx, rec)
+					})
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// Close closes all nested handlers. Any error or panic returned by a sub-handler is suppressed
+// and forwarded to the optional callback. Always returns nil.
+func (w *WhatFailureGroup) Close(ctx context.Context) error {
+	for _, h := range w.handlers {
+		invokeSafe(h, w.onError, func() error {
+			return h.Close(ctx)
+		})
+	}
+	return nil
+}
+
+func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) {
+	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic in handler: %v", r)
+			}
+			if onError != nil {
+				func() {
+					defer func() { _ = recover() }()
+					onError(err, h)
+				}()
+			}
+		}
+	}()
+
+	if err = fn(); err != nil {
+		if onError != nil {
+			func() {
+				defer func() { _ = recover() }()
+				onError(err, h)
+			}()
+		}
+	}
+}

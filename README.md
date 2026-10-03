@@ -8,7 +8,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Group, Test, Null.
+- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Group, WhatFailureGroup, Test, Null.
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
@@ -148,6 +148,44 @@ logger := monogo.New("app", []monogo.Handler{dedupHandler}, nil)
 logger.Error(ctx, "Database connection lost") // Emitted immediately
 logger.Error(ctx, "Database connection lost") // Suppressed (duplicate within 60s)
 logger.Info(ctx, "User clicked button")       // Emitted (below dedupLevel)
+```
+
+## WhatFailureGroup Handler
+
+Inspired by PHP Monolog's `WhatFailureGroupHandler`, the `WhatFailureGroup` handler wraps a slice of handlers and suppresses any errors or panics returned by individual sub-handlers during `Handle`, `HandleBatch`, or `Close`. This guarantees that failures in secondary or external logging sinks (e.g., Slack webhooks, remote log aggregators, or Elasticsearch) never interrupt critical file/console logging or fail caller operations.
+
+An optional error callback can be attached via `handler.WithWhatFailureCallback` to inspect and monitor suppressed errors (e.g., for metrics or diagnostics) without bubbling them to the caller:
+
+```go
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+primaryFile, _ := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+primaryHandler := handler.NewStream(primaryFile, monogo.INFO)
+
+// Wrap non-critical or remote handlers in WhatFailureGroup
+resilientGroup := handler.NewWhatFailureGroup(
+	[]monogo.Handler{
+		slackWebhookHandler,
+		elasticsearchHandler,
+	},
+	handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+		// Log or record metrics for external sink failures without failing the caller
+		metrics.Increment("logger.secondary_sink_failure")
+	}),
+)
+
+logger := monogo.New("app", []monogo.Handler{primaryHandler, resilientGroup}, nil)
+
+// Even if external services time out, panic, or fail, primaryHandler receives the log safely
+logger.Error(ctx, "Payment transaction failed")
 ```
 
 ## Handler Bubbling
