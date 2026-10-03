@@ -13,6 +13,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Per-Handler Processors** | `ProcessableHandlerInterface` (`pushProcessor`) | `ProcessableHandler` & `handler.WithProcessor(...)` | Configured at construction via functional options; executes handler-specific processors and clones records to prevent mutation leakage. |
 | **Bubbling** | `$bubble = false` halts propagation | `Bubbler` interface & `handler.WithBubble(bool)` option | Configured at construction time via options; stops record propagation down the handler stack when `Bubble()` returns `false`. |
 | **Batch Handling** | `handleBatch(array $records)` / `formatBatch` | `BatchHandler` / `BatchFormatter` interfaces | Optional segregated interfaces (`BatchHandler`, `BatchFormatter`) avoid forcing iteration boilerplate on simple handlers while enabling atomic flushes and bulk formatting where supported. |
+| **Deduplication** | `DeduplicationHandler` (file-based store) | `Deduplication` (`DeduplicationStore` interface) | Thread-safe in-memory cache with zero-goroutine auto-pruning eliminates disk I/O in long-running Go services while supporting pluggable backends. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |
 
 ---
@@ -24,7 +25,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Channel Support** | First-class (`Record.Channel`) | Not built-in | Not built-in | Logger name | Logger component |
 | **Call-site Fields** | `Context` map | `WithFields` | `Attr` / variadic | Typed `Field`s | Chained `Fields` |
 | **System Metadata** | `Extra` map (via Processors) | Hooks | Handler wrappers | Core / Encoders | Event hooks |
-| **Handler Pipeline** | Handlers stack (`FingersCrossed`, `Buffer`, `Stream`) | Hooks / `io.Writer` | `slog.Handler` | `zapcore.Core` | `io.Writer` |
+| **Handler Pipeline** | Handlers stack (`Deduplication`, `FingersCrossed`, `Buffer`, `Stream`) | Hooks / `io.Writer` | `slog.Handler` | `zapcore.Core` | `io.Writer` |
 | **Formatters** | `Formatter` (`Line`, `JSON`) | `Formatter` | Text / JSON | Encoders | Console / JSON |
 
 ---

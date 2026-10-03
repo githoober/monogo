@@ -53,3 +53,6 @@ Formatting options on `formatter.JSON` for multi-record batches:
 ### Processable Handler
 Defined by `monogo.ProcessableHandler` (`Processors() []Processor`, `ProcessRecord(Record) Record`). Enables handlers to have dedicated processors configured via `handler.WithProcessor(...)` that execute before formatting/handling. Clones records when processors are present to prevent mutation leakage to subsequent handlers in the stack.
 
+### Deduplication Handler
+A flood-control decorator handler (`handler.Deduplication`) that suppresses identical log records repeating within a configurable time window (`time.Duration`). Only records with `Level >= dedupLevel` (default `ERROR`) are deduplicated, while records below the threshold pass through unconditionally. Provides thread-safe, zero-goroutine auto-pruned in-memory storage and supports custom `DeduplicationStore` backends and custom key extractors (`handler.WithDeduplicationKey`).
+
