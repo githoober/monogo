@@ -24,6 +24,7 @@ A destination component responsible for receiving a `Record` and outputting or f
 - `Filter`: Filters records within a level range.
 - `Group`: Multiplexes records to multiple handlers.
 - `Buffer`: Buffers records until capacity or flush level.
+- `Deduplication`: Suppresses duplicate log records occurring within a time window.
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:

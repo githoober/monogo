@@ -122,6 +122,34 @@ logger.Info(ctx, "Step 2 processing")   // Buffered silently
 logger.Error(ctx, "Step 3 failed!")     // Triggers flush: prints Step 1, Step 2, and Step 3
 ```
 
+## Deduplication Handler
+
+The `Deduplication` handler suppresses duplicate log records that occur within a configurable time window (default 60 seconds). Records with level >= `dedupLevel` (default `ERROR`) are deduplicated, while records below `dedupLevel` pass through unconditionally. This protects logging and notification sinks from flood exhaustion during outages or retry storms.
+
+```go
+import (
+	"context"
+	"os"
+	"time"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+streamHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+
+// Deduplicate identical ERROR+ logs within a 60-second window
+dedupHandler := handler.NewDeduplication(streamHandler, monogo.ERROR, 60*time.Second)
+
+logger := monogo.New("app", []monogo.Handler{dedupHandler}, nil)
+
+logger.Error(ctx, "Database connection lost") // Emitted immediately
+logger.Error(ctx, "Database connection lost") // Suppressed (duplicate within 60s)
+logger.Info(ctx, "User clicked button")       // Emitted (below dedupLevel)
+```
+
 ## Handler Bubbling
 
 Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By default, records bubble through all handlers that handle the record's level. A handler can stop propagation down the stack by configuring bubbling as `false` at construction time via `handler.WithBubble(false)`:

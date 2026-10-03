@@ -66,6 +66,7 @@ Built-in handlers include:
 - **`Stream`**: Writes formatted logs to any `io.Writer`.
 - **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
+- **`Deduplication`**: Suppresses identical log records that occur within a configurable time window (e.g. 60s) to prevent log flooding during outages.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
