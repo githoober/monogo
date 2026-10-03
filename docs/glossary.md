@@ -24,6 +24,7 @@ A destination component responsible for receiving a `Record` and outputting or f
 - `Filter`: Filters records within a level range.
 - `Group`: Multiplexes records to multiple handlers.
 - `Buffer`: Buffers records until capacity or flush level.
+- `Deduplication`: Suppresses duplicate log records occurring within a time window.
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
@@ -51,4 +52,7 @@ Formatting options on `formatter.JSON` for multi-record batches:
 
 ### Processable Handler
 Defined by `monogo.ProcessableHandler` (`Processors() []Processor`, `ProcessRecord(Record) Record`). Enables handlers to have dedicated processors configured via `handler.WithProcessor(...)` that execute before formatting/handling. Clones records when processors are present to prevent mutation leakage to subsequent handlers in the stack.
+
+### Deduplication Handler
+A flood-control decorator handler (`handler.Deduplication`) that suppresses identical log records repeating within a configurable time window (`time.Duration`). Only records with `Level >= dedupLevel` (default `ERROR`) are deduplicated, while records below the threshold pass through unconditionally. Provides thread-safe, zero-goroutine auto-pruned in-memory storage and supports custom `DeduplicationStore` backends and custom key extractors (`handler.WithDeduplicationKey`).
 

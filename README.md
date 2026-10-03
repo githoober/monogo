@@ -8,7 +8,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Filter, Group, Buffer, FingersCrossed, Test, Null.
+- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Group, Test, Null.
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
@@ -120,6 +120,34 @@ logger := monogo.New("app", []monogo.Handler{fcHandler}, nil)
 logger.Debug(ctx, "Step 1 initialized") // Buffered silently
 logger.Info(ctx, "Step 2 processing")   // Buffered silently
 logger.Error(ctx, "Step 3 failed!")     // Triggers flush: prints Step 1, Step 2, and Step 3
+```
+
+## Deduplication Handler
+
+The `Deduplication` handler suppresses duplicate log records that occur within a configurable time window (default 60 seconds). Records with level >= `dedupLevel` (default `ERROR`) are deduplicated, while records below `dedupLevel` pass through unconditionally. This protects logging and notification sinks from flood exhaustion during outages or retry storms.
+
+```go
+import (
+	"context"
+	"os"
+	"time"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+streamHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+
+// Deduplicate identical ERROR+ logs within a 60-second window
+dedupHandler := handler.NewDeduplication(streamHandler, monogo.ERROR, 60*time.Second)
+
+logger := monogo.New("app", []monogo.Handler{dedupHandler}, nil)
+
+logger.Error(ctx, "Database connection lost") // Emitted immediately
+logger.Error(ctx, "Database connection lost") // Suppressed (duplicate within 60s)
+logger.Info(ctx, "User clicked button")       // Emitted (below dedupLevel)
 ```
 
 ## Handler Bubbling

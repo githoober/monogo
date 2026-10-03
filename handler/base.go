@@ -16,13 +16,15 @@ type BaseHandler struct {
 }
 
 type options struct {
-	bubble     bool
-	formatter  monogo.Formatter
-	processors []monogo.Processor
-	maxSizeMB  int
-	maxBackups int
-	maxAgeDays int
-	compress   bool
+	bubble       bool
+	formatter    monogo.Formatter
+	processors   []monogo.Processor
+	maxSizeMB    int
+	maxBackups   int
+	maxAgeDays   int
+	compress     bool
+	dedupKeyFunc func(monogo.Record) string
+	dedupStore   DeduplicationStore
 }
 
 func defaultOptions() options {

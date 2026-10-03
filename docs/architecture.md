@@ -58,7 +58,7 @@ This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering 
 
 ---
 
-## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Filter`, `Group`, `Buffer`)
+## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Deduplication`, `Filter`, `Group`, `Buffer`)
 
 ### Decision
 Log records flow through the classic Monolog pipeline (IsHandling -> Processors -> Handlers -> Formatters).
@@ -66,6 +66,7 @@ Built-in handlers include:
 - **`Stream`**: Writes formatted logs to any `io.Writer`.
 - **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
+- **`Deduplication`**: Suppresses identical log records that occur within a configurable time window (e.g. 60s) to prevent log flooding during outages.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
@@ -74,8 +75,10 @@ Handlers also support per-handler processors via `handler.WithProcessor(...)` an
 
 Handlers and formatters also implement batch operations (`HandleBatch`, `FormatBatch`), allowing buffering handlers (`Buffer`, `FingersCrossed`) to flush accumulated records in atomic bulk operations without per-record locking overhead.
 
+For flood control, `Deduplication` acts as a decorator handler. Unlike PHP Monolog which relies on disk files to share deduplication state between ephemeral PHP processes, Monogo utilizes a high-performance, thread-safe in-memory cache with zero-goroutine periodic auto-pruning to eliminate memory leaks in 24/7 long-running services, while supporting custom `DeduplicationStore` backends (e.g. distributed caches).
+
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, or error-triggered flushes. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, error-triggered flushes, or duplicate suppression. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically. Deduplication protects logging, alerting, and notification sinks from flood exhaustion during cascading failures, retry loops, or outages.
 
 ---
 

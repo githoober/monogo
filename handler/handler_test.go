@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/formatter"
@@ -440,6 +441,7 @@ var (
 	_ monogo.ProcessableHandler = (*handler.FingersCrossed)(nil)
 	_ monogo.ProcessableHandler = (*handler.Test)(nil)
 	_ monogo.ProcessableHandler = (*handler.Null)(nil)
+	_ monogo.ProcessableHandler = (*handler.Deduplication)(nil)
 )
 
 func TestHandlerWithProcessorInspection(t *testing.T) {
@@ -689,5 +691,273 @@ func TestGroupHandlerHandleBatchWithProcessor(t *testing.T) {
 	}
 }
 
+func TestDeduplicationHandlerBasic(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second)
 
+	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
 
+	// Record 1: ERROR "db failed" at t=0s -> should be handled
+	r1 := monogo.Record{
+		Message: "db failed",
+		Level:   monogo.ERROR,
+		Channel: "app",
+		Time:    baseTime,
+	}
+	if err := dedupH.Handle(ctx, r1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(testH.Records()) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(testH.Records()))
+	}
+
+	// Record 2: Identical ERROR at t=10s (within 60s window) -> should be suppressed
+	r2 := monogo.Record{
+		Message: "db failed",
+		Level:   monogo.ERROR,
+		Channel: "app",
+		Time:    baseTime.Add(10 * time.Second),
+	}
+	if err := dedupH.Handle(ctx, r2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(testH.Records()) != 1 {
+		t.Fatalf("expected duplicate record to be suppressed, got %d", len(testH.Records()))
+	}
+
+	// Record 3: Different ERROR at t=20s -> should be handled
+	r3 := monogo.Record{
+		Message: "network timeout",
+		Level:   monogo.ERROR,
+		Channel: "app",
+		Time:    baseTime.Add(20 * time.Second),
+	}
+	if err := dedupH.Handle(ctx, r3); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(testH.Records()) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(testH.Records()))
+	}
+
+	// Record 4: Same message "db failed" but different channel "auth" at t=30s -> should be handled
+	r4 := monogo.Record{
+		Message: "db failed",
+		Level:   monogo.ERROR,
+		Channel: "auth",
+		Time:    baseTime.Add(30 * time.Second),
+	}
+	if err := dedupH.Handle(ctx, r4); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(testH.Records()) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(testH.Records()))
+	}
+
+	// Record 5: Same message "db failed" on "app" after window has expired at t=65s -> should be handled
+	r5 := monogo.Record{
+		Message: "db failed",
+		Level:   monogo.ERROR,
+		Channel: "app",
+		Time:    baseTime.Add(65 * time.Second),
+	}
+	if err := dedupH.Handle(ctx, r5); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(testH.Records()) != 4 {
+		t.Fatalf("expected 4 records after window expired, got %d", len(testH.Records()))
+	}
+}
+
+func TestDeduplicationHandlerBelowLevel(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	// Deduplicate only ERROR and above
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second)
+
+	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+
+	// 3 identical INFO records within window -> all should pass through
+	for i := 0; i < 3; i++ {
+		rec := monogo.Record{
+			Message: "user clicked button",
+			Level:   monogo.INFO,
+			Channel: "app",
+			Time:    baseTime.Add(time.Duration(i) * time.Second),
+		}
+		if err := dedupH.Handle(ctx, rec); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if len(testH.Records()) != 3 {
+		t.Errorf("expected all 3 INFO records to pass through without deduplication, got %d", len(testH.Records()))
+	}
+}
+
+func TestDeduplicationHandlerBatch(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second)
+
+	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+
+	batch := []monogo.Record{
+		{Message: "err 1", Level: monogo.ERROR, Channel: "app", Time: baseTime},
+		{Message: "err 1", Level: monogo.ERROR, Channel: "app", Time: baseTime.Add(5 * time.Second)}, // duplicate, skip
+		{Message: "err 2", Level: monogo.ERROR, Channel: "app", Time: baseTime.Add(10 * time.Second)},
+		{Message: "info 1", Level: monogo.INFO, Channel: "app", Time: baseTime.Add(15 * time.Second)},
+		{Message: "info 1", Level: monogo.INFO, Channel: "app", Time: baseTime.Add(20 * time.Second)}, // INFO below dedupLevel, keep
+	}
+
+	if err := dedupH.HandleBatch(ctx, batch); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recs := testH.Records()
+	if len(recs) != 4 {
+		t.Fatalf("expected 4 records after batch deduplication (1 duplicate dropped), got %d", len(recs))
+	}
+	if recs[0].Message != "err 1" || recs[1].Message != "err 2" || recs[2].Message != "info 1" || recs[3].Message != "info 1" {
+		t.Errorf("unexpected batch records: %+v", recs)
+	}
+}
+
+func TestDeduplicationHandlerCustomKey(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	// Deduplicate based on context "error_code"
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second,
+		handler.WithDeduplicationKey(func(r monogo.Record) string {
+			if code, ok := r.Context["error_code"].(string); ok {
+				return code
+			}
+			return r.Message
+		}),
+	)
+
+	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+
+	// Different message, but same error_code -> second should be suppressed
+	r1 := monogo.Record{
+		Message: "Connection dropped to db-1",
+		Level:   monogo.ERROR,
+		Context: map[string]interface{}{"error_code": "ERR_DB_DISCONNECT"},
+		Time:    baseTime,
+	}
+	r2 := monogo.Record{
+		Message: "Failed to connect to db-2",
+		Level:   monogo.ERROR,
+		Context: map[string]interface{}{"error_code": "ERR_DB_DISCONNECT"},
+		Time:    baseTime.Add(5 * time.Second),
+	}
+
+	if err := dedupH.Handle(ctx, r1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := dedupH.Handle(ctx, r2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(testH.Records()) != 1 {
+		t.Errorf("expected 1 record due to custom error_code key deduplication, got %d", len(testH.Records()))
+	}
+}
+
+func TestDeduplicationHandlerWithProcessor(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second,
+		handler.WithProcessor(processor.Tag("dedup", "active")),
+	)
+
+	ctx := context.Background()
+	r := monogo.Record{Message: "test msg", Level: monogo.ERROR}
+
+	if err := dedupH.Handle(ctx, r); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	recs := testH.Records()
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	if recs[0].Extra["dedup"] != "active" {
+		t.Errorf("expected extra.dedup='active', got: %v", recs[0].Extra["dedup"])
+	}
+}
+
+func TestDeduplicationHandlerReset(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second)
+
+	baseTime := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	ctx := context.Background()
+
+	r := monogo.Record{Message: "err", Level: monogo.ERROR, Time: baseTime}
+
+	_ = dedupH.Handle(ctx, r)
+	if len(testH.Records()) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(testH.Records()))
+	}
+
+	// Reset deduplication store
+	dedupH.Reset()
+
+	// Same record at t=1s should now be handled because store was reset
+	r2 := monogo.Record{Message: "err", Level: monogo.ERROR, Time: baseTime.Add(1 * time.Second)}
+	_ = dedupH.Handle(ctx, r2)
+	if len(testH.Records()) != 2 {
+		t.Fatalf("expected 2 records after Reset(), got %d", len(testH.Records()))
+	}
+}
+
+func TestDeduplicationHandlerBubblingAndClose(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second,
+		handler.WithBubble(false),
+	)
+
+	if dedupH.Bubble() {
+		t.Errorf("expected Bubble() to be false when configured with WithBubble(false)")
+	}
+
+	if err := dedupH.Close(context.Background()); err != nil {
+		t.Fatalf("unexpected error from Close: %v", err)
+	}
+
+	if !dedupH.IsHandling(context.Background(), monogo.ERROR) {
+		t.Errorf("expected IsHandling to be true for ERROR")
+	}
+}
+
+type mockDedupStore struct {
+	calledIsDuplicate bool
+	calledReset       bool
+}
+
+func (m *mockDedupStore) IsDuplicate(key string, now time.Time, window time.Duration) bool {
+	m.calledIsDuplicate = true
+	return false
+}
+
+func (m *mockDedupStore) Reset() {
+	m.calledReset = true
+}
+
+func TestDeduplicationHandlerCustomStore(t *testing.T) {
+	mockStore := &mockDedupStore{}
+	testH := handler.NewTest(monogo.DEBUG)
+	dedupH := handler.NewDeduplication(testH, monogo.ERROR, 60*time.Second,
+		handler.WithDeduplicationStore(mockStore),
+	)
+
+	_ = dedupH.Handle(context.Background(), monogo.Record{Message: "msg", Level: monogo.ERROR})
+	if !mockStore.calledIsDuplicate {
+		t.Errorf("expected custom store IsDuplicate to be called")
+	}
+
+	dedupH.Reset()
+	if !mockStore.calledReset {
+		t.Errorf("expected custom store Reset to be called")
+	}
+}
