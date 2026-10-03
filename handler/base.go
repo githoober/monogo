@@ -23,8 +23,9 @@ type options struct {
 	maxBackups   int
 	maxAgeDays   int
 	compress     bool
-	dedupKeyFunc func(monogo.Record) string
-	dedupStore   DeduplicationStore
+	dedupKeyFunc        func(monogo.Record) string
+	dedupStore          DeduplicationStore
+	whatFailureCallback func(error, monogo.Handler)
 }
 
 func defaultOptions() options {

@@ -14,6 +14,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Bubbling** | `$bubble = false` halts propagation | `Bubbler` interface & `handler.WithBubble(bool)` option | Configured at construction time via options; stops record propagation down the handler stack when `Bubble()` returns `false`. |
 | **Batch Handling** | `handleBatch(array $records)` / `formatBatch` | `BatchHandler` / `BatchFormatter` interfaces | Optional segregated interfaces (`BatchHandler`, `BatchFormatter`) avoid forcing iteration boilerplate on simple handlers while enabling atomic flushes and bulk formatting where supported. |
 | **Deduplication** | `DeduplicationHandler` (file-based store) | `Deduplication` (`DeduplicationStore` interface) | Thread-safe in-memory cache with zero-goroutine auto-pruning eliminates disk I/O in long-running Go services while supporting pluggable backends. |
+| **Failure Tolerance** | `WhatFailureGroupHandler` (catches `Throwable`) | `WhatFailureGroup` (suppresses errors and panics) | Intercepts errors and recovered panics from individual sub-handlers, never bubbling errors to caller, with optional error callback for telemetry. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |
 
 ---

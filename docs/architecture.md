@@ -58,7 +58,7 @@ This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering 
 
 ---
 
-## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Deduplication`, `Filter`, `Group`, `Buffer`)
+## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Deduplication`, `WhatFailureGroup`, `Filter`, `Group`, `Buffer`)
 
 ### Decision
 Log records flow through the classic Monolog pipeline (IsHandling -> Processors -> Handlers -> Formatters).
@@ -67,6 +67,7 @@ Built-in handlers include:
 - **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
 - **`Deduplication`**: Suppresses identical log records that occur within a configurable time window (e.g. 60s) to prevent log flooding during outages.
+- **`WhatFailureGroup`**: Wraps a group of handlers and swallows any errors or panics returned by individual handlers during `Handle`, `HandleBatch`, or `Close`, preventing secondary sink failures from breaking primary logging.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
@@ -77,8 +78,10 @@ Handlers and formatters also implement batch operations (`HandleBatch`, `FormatB
 
 For flood control, `Deduplication` acts as a decorator handler. Unlike PHP Monolog which relies on disk files to share deduplication state between ephemeral PHP processes, Monogo utilizes a high-performance, thread-safe in-memory cache with zero-goroutine periodic auto-pruning to eliminate memory leaks in 24/7 long-running services, while supporting custom `DeduplicationStore` backends (e.g. distributed caches).
 
+For error isolation across multiple handlers, `WhatFailureGroup` guarantees that unreliable sinks (remote syslog, webhooks, Slack, Elasticsearch) can fail or panic without disrupting healthy handlers or crashing application requests.
+
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, error-triggered flushes, or duplicate suppression. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically. Deduplication protects logging, alerting, and notification sinks from flood exhaustion during cascading failures, retry loops, or outages.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, error-triggered flushes, duplicate suppression, or resilient failure swallowing. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically. Deduplication protects logging, alerting, and notification sinks from flood exhaustion during cascading failures, retry loops, or outages. WhatFailureGroup ensures secondary and external logging sinks do not create single points of failure in applications.
 
 ---
 

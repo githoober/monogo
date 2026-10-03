@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -442,6 +444,7 @@ var (
 	_ monogo.ProcessableHandler = (*handler.Test)(nil)
 	_ monogo.ProcessableHandler = (*handler.Null)(nil)
 	_ monogo.ProcessableHandler = (*handler.Deduplication)(nil)
+	_ monogo.ProcessableHandler = (*handler.WhatFailureGroup)(nil)
 )
 
 func TestHandlerWithProcessorInspection(t *testing.T) {
@@ -961,3 +964,384 @@ func TestDeduplicationHandlerCustomStore(t *testing.T) {
 		t.Errorf("expected custom store Reset to be called")
 	}
 }
+
+type failingMockHandler struct {
+	name             string
+	minLevel         monogo.Level
+	failHandle       bool
+	panicHandle      bool
+	panicHandleError bool
+	failHandleBatch  bool
+	panicHandleBatch bool
+	failClose        bool
+	panicClose       bool
+	handleCalls      int
+	batchCalls       int
+	closeCalls       int
+	records          []monogo.Record
+}
+
+func (f *failingMockHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	return level >= f.minLevel
+}
+
+func (f *failingMockHandler) Handle(_ context.Context, record monogo.Record) error {
+	f.handleCalls++
+	if f.panicHandleError {
+		panic(errors.New("handle panic error object: " + f.name))
+	}
+	if f.panicHandle {
+		panic("handle panic simulated: " + f.name)
+	}
+	if f.failHandle {
+		return fmt.Errorf("handle error simulated: %s", f.name)
+	}
+	f.records = append(f.records, record)
+	return nil
+}
+
+func (f *failingMockHandler) HandleBatch(_ context.Context, records []monogo.Record) error {
+	f.batchCalls++
+	if f.panicHandleBatch {
+		panic("handleBatch panic simulated: " + f.name)
+	}
+	if f.failHandleBatch {
+		return fmt.Errorf("handleBatch error simulated: %s", f.name)
+	}
+	f.records = append(f.records, records...)
+	return nil
+}
+
+func (f *failingMockHandler) Close(_ context.Context) error {
+	f.closeCalls++
+	if f.panicClose {
+		panic("close panic simulated: " + f.name)
+	}
+	if f.failClose {
+		return fmt.Errorf("close error simulated: %s", f.name)
+	}
+	return nil
+}
+
+type failingNonBatchHandler struct {
+	name        string
+	minLevel    monogo.Level
+	failHandle  bool
+	panicHandle bool
+	handleCalls int
+	records     []monogo.Record
+}
+
+func (f *failingNonBatchHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	return level >= f.minLevel
+}
+
+func (f *failingNonBatchHandler) Handle(_ context.Context, record monogo.Record) error {
+	f.handleCalls++
+	if f.panicHandle {
+		panic("non-batch handle panic simulated: " + f.name)
+	}
+	if f.failHandle {
+		return fmt.Errorf("non-batch handle error simulated: %s", f.name)
+	}
+	f.records = append(f.records, record)
+	return nil
+}
+
+func (f *failingNonBatchHandler) Close(_ context.Context) error {
+	return nil
+}
+
+func TestWhatFailureGroupHandle_SuppressesErrorsAndPanics(t *testing.T) {
+	ctx := context.Background()
+	h1 := handler.NewTest(monogo.DEBUG)
+	h2 := &failingMockHandler{name: "failing-h2", minLevel: monogo.DEBUG, failHandle: true}
+	h3 := &failingMockHandler{name: "panicking-h3", minLevel: monogo.DEBUG, panicHandle: true}
+	h3b := &failingMockHandler{name: "panicking-err-h3b", minLevel: monogo.DEBUG, panicHandleError: true}
+	h4 := handler.NewTest(monogo.DEBUG)
+
+	var reportedErrors []string
+	var reportedHandlers []monogo.Handler
+
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{h1, h2, h3, h3b, h4},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+			reportedHandlers = append(reportedHandlers, h)
+		}),
+	)
+
+	rec := monogo.Record{Message: "test resilience", Level: monogo.INFO}
+	if err := wfg.Handle(ctx, rec); err != nil {
+		t.Fatalf("expected nil error from WhatFailureGroup.Handle, got: %v", err)
+	}
+
+	// Verify healthy handlers received the record despite h2, h3, and h3b failures
+	if len(h1.Records()) != 1 || h1.Records()[0].Message != "test resilience" {
+		t.Errorf("expected h1 to receive record, got %v", h1.Records())
+	}
+	if len(h4.Records()) != 1 || h4.Records()[0].Message != "test resilience" {
+		t.Errorf("expected h4 to receive record, got %v", h4.Records())
+	}
+
+	// Verify callback captured error, string panic, and error object panic
+	if len(reportedErrors) != 3 {
+		t.Fatalf("expected 3 reported errors, got %d: %v", len(reportedErrors), reportedErrors)
+	}
+	if !strings.Contains(reportedErrors[0], "handle error simulated: failing-h2") {
+		t.Errorf("expected error for h2, got: %s", reportedErrors[0])
+	}
+	if !strings.Contains(reportedErrors[1], "panic in handler: handle panic simulated: panicking-h3") {
+		t.Errorf("expected panic error for h3, got: %s", reportedErrors[1])
+	}
+	if !strings.Contains(reportedErrors[2], "handle panic error object: panicking-err-h3b") {
+		t.Errorf("expected panic error object for h3b, got: %s", reportedErrors[2])
+	}
+	if reportedHandlers[0] != h2 || reportedHandlers[1] != h3 || reportedHandlers[2] != h3b {
+		t.Errorf("reported handler references did not match failing handlers")
+	}
+}
+
+func TestWhatFailureGroupHandle_CallbackPanicSuppression(t *testing.T) {
+	ctx := context.Background()
+	hFail := &failingMockHandler{name: "fail", minLevel: monogo.DEBUG, failHandle: true}
+	hGood := handler.NewTest(monogo.DEBUG)
+
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{hFail, hGood},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			panic("callback exploded intentionally")
+		}),
+	)
+
+	// Must not panic or return error even if onError callback panics
+	if err := wfg.Handle(ctx, monogo.Record{Message: "safe", Level: monogo.INFO}); err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	if len(hGood.Records()) != 1 {
+		t.Errorf("expected hGood to receive record")
+	}
+}
+
+func TestWhatFailureGroupHandleBatch(t *testing.T) {
+	ctx := context.Background()
+	h1 := handler.NewTest(monogo.DEBUG)
+	h2 := &failingMockHandler{name: "failing-batch", minLevel: monogo.DEBUG, failHandleBatch: true}
+	h3 := &failingMockHandler{name: "panicking-batch", minLevel: monogo.DEBUG, panicHandleBatch: true}
+	h4 := handler.NewTest(monogo.DEBUG)
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{h1, h2, h3, h4},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	records := []monogo.Record{
+		{Message: "batch 1", Level: monogo.INFO},
+		{Message: "batch 2", Level: monogo.WARNING},
+	}
+
+	if err := wfg.HandleBatch(ctx, records); err != nil {
+		t.Fatalf("expected nil error from HandleBatch, got: %v", err)
+	}
+
+	if len(h1.Records()) != 2 {
+		t.Errorf("expected h1 to receive 2 batch records, got %d", len(h1.Records()))
+	}
+	if len(h4.Records()) != 2 {
+		t.Errorf("expected h4 to receive 2 batch records, got %d", len(h4.Records()))
+	}
+	if len(reportedErrors) != 2 {
+		t.Fatalf("expected 2 reported errors, got %d: %v", len(reportedErrors), reportedErrors)
+	}
+}
+
+func TestWhatFailureGroupHandleBatch_NonBatchFallback(t *testing.T) {
+	ctx := context.Background()
+	h1 := &failingNonBatchHandler{name: "healthy-nb", minLevel: monogo.DEBUG}
+	h2 := &failingNonBatchHandler{name: "failing-nb", minLevel: monogo.DEBUG, failHandle: true}
+	h3 := &failingNonBatchHandler{name: "panicking-nb", minLevel: monogo.DEBUG, panicHandle: true}
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{h1, h2, h3},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	records := []monogo.Record{
+		{Message: "rec 1", Level: monogo.INFO},
+		{Message: "rec 2", Level: monogo.INFO},
+	}
+
+	if err := wfg.HandleBatch(ctx, records); err != nil {
+		t.Fatalf("expected nil error from HandleBatch, got: %v", err)
+	}
+
+	if len(h1.records) != 2 {
+		t.Errorf("expected h1 to receive 2 records, got %d", len(h1.records))
+	}
+	if h2.handleCalls != 2 {
+		t.Errorf("expected h2 to receive 2 handle calls, got %d", h2.handleCalls)
+	}
+	if h3.handleCalls != 2 {
+		t.Errorf("expected h3 to receive 2 handle calls, got %d", h3.handleCalls)
+	}
+	if len(reportedErrors) != 4 { // 2 failures for h2 + 2 failures for h3
+		t.Fatalf("expected 4 reported errors, got %d: %v", len(reportedErrors), reportedErrors)
+	}
+}
+
+func TestWhatFailureGroupClose(t *testing.T) {
+	ctx := context.Background()
+	h1 := &failingMockHandler{name: "h1"}
+	h2 := &failingMockHandler{name: "h2", failClose: true}
+	h3 := &failingMockHandler{name: "h3", panicClose: true}
+	h4 := &failingMockHandler{name: "h4"}
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{h1, h2, h3, h4},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	if err := wfg.Close(ctx); err != nil {
+		t.Fatalf("expected nil error from Close, got: %v", err)
+	}
+
+	if h1.closeCalls != 1 || h2.closeCalls != 1 || h3.closeCalls != 1 || h4.closeCalls != 1 {
+		t.Errorf("expected all 4 handlers to have Close called once: h1=%d, h2=%d, h3=%d, h4=%d",
+			h1.closeCalls, h2.closeCalls, h3.closeCalls, h4.closeCalls)
+	}
+	if len(reportedErrors) != 2 {
+		t.Fatalf("expected 2 close errors, got %d: %v", len(reportedErrors), reportedErrors)
+	}
+}
+
+func TestWhatFailureGroupIsHandling(t *testing.T) {
+	ctx := context.Background()
+	h1 := handler.NewTest(monogo.WARNING)
+	h2 := handler.NewTest(monogo.CRITICAL)
+
+	wfg := handler.NewWhatFailureGroup([]monogo.Handler{h1, h2})
+
+	if wfg.IsHandling(ctx, monogo.DEBUG) {
+		t.Errorf("expected false for DEBUG")
+	}
+	if wfg.IsHandling(ctx, monogo.INFO) {
+		t.Errorf("expected false for INFO")
+	}
+	if !wfg.IsHandling(ctx, monogo.WARNING) {
+		t.Errorf("expected true for WARNING")
+	}
+	if !wfg.IsHandling(ctx, monogo.CRITICAL) {
+		t.Errorf("expected true for CRITICAL")
+	}
+
+	wfgEmpty := handler.NewWhatFailureGroup(nil)
+	if wfgEmpty.IsHandling(ctx, monogo.EMERGENCY) {
+		t.Errorf("expected false for empty group")
+	}
+}
+
+func TestWhatFailureGroupWithProcessor(t *testing.T) {
+	ctx := context.Background()
+	h1 := handler.NewTest(monogo.DEBUG)
+	p1 := processor.Tag("tag1", "val1")
+	p2 := processor.Tag("tag2", "val2")
+
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{h1},
+		handler.WithProcessor(p1),
+		handler.WithProcessors(p2),
+	)
+
+	if len(wfg.Processors()) != 2 {
+		t.Fatalf("expected 2 processors, got %d", len(wfg.Processors()))
+	}
+	// Verify defensive copy
+	wfg.Processors()[0] = nil
+	if wfg.Processors()[0] == nil {
+		t.Errorf("expected Processors() to return a defensive copy")
+	}
+
+	rec := monogo.Record{Message: "msg", Level: monogo.INFO, Extra: make(map[string]interface{})}
+	if err := wfg.Handle(ctx, rec); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Caller record must not be mutated
+	if _, ok := rec.Extra["tag1"]; ok {
+		t.Errorf("caller record was mutated")
+	}
+
+	// Handler received enriched record
+	recs := h1.Records()
+	if len(recs) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(recs))
+	}
+	if recs[0].Extra["tag1"] != "val1" || recs[0].Extra["tag2"] != "val2" {
+		t.Errorf("processors were not applied correctly: %v", recs[0].Extra)
+	}
+
+	// Test batch with processors
+	h1.Reset()
+	batch := []monogo.Record{
+		{Message: "b1", Level: monogo.INFO, Extra: make(map[string]interface{})},
+		{Message: "b2", Level: monogo.INFO, Extra: make(map[string]interface{})},
+	}
+	if err := wfg.HandleBatch(ctx, batch); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(h1.Records()) != 2 {
+		t.Fatalf("expected 2 batch records, got %d", len(h1.Records()))
+	}
+	if h1.Records()[0].Extra["tag1"] != "val1" || h1.Records()[1].Extra["tag2"] != "val2" {
+		t.Errorf("batch records not enriched properly: %v", h1.Records())
+	}
+}
+
+func TestWhatFailureGroupBubblingAndLoggerIntegration(t *testing.T) {
+	ctx := context.Background()
+	hInner := handler.NewTest(monogo.DEBUG)
+	hSubsequent := handler.NewTest(monogo.DEBUG)
+
+	wfg := handler.NewWhatFailureGroup([]monogo.Handler{hInner}, handler.WithBubble(false))
+	if wfg.Bubble() {
+		t.Errorf("expected Bubble() to be false")
+	}
+
+	logger := monogo.New("test-channel", []monogo.Handler{wfg, hSubsequent}, nil)
+	if err := logger.Info(ctx, "hello bubbling"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(hInner.Records()) != 1 {
+		t.Fatalf("expected hInner to receive 1 record, got %d", len(hInner.Records()))
+	}
+	if len(hSubsequent.Records()) != 0 {
+		t.Errorf("expected hSubsequent to receive 0 records due to bubble=false, got %d", len(hSubsequent.Records()))
+	}
+}
+
+func TestWhatFailureGroupHandlersInspection(t *testing.T) {
+	h1 := handler.NewTest(monogo.DEBUG)
+	h2 := handler.NewTest(monogo.INFO)
+	wfg := handler.NewWhatFailureGroup([]monogo.Handler{h1, h2})
+
+	handlers := wfg.Handlers()
+	if len(handlers) != 2 {
+		t.Fatalf("expected 2 handlers, got %d", len(handlers))
+	}
+	handlers[0] = nil
+	if wfg.Handlers()[0] == nil {
+		t.Errorf("expected Handlers() to return defensive copy")
+	}
+}
+
