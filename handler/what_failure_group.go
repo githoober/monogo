@@ -65,9 +65,10 @@ func (w *WhatFailureGroup) Handlers() []monogo.Handler {
 }
 
 // IsHandling returns true if any nested handler handles the log level.
+// Any panic in a nested handler's IsHandling is suppressed and forwarded to onError.
 func (w *WhatFailureGroup) IsHandling(ctx context.Context, level monogo.Level) bool {
 	for _, h := range w.handlers {
-		if h.IsHandling(ctx, level) {
+		if safeIsHandling(h, w.onError, ctx, level) {
 			return true
 		}
 	}
@@ -80,7 +81,7 @@ func (w *WhatFailureGroup) IsHandling(ctx context.Context, level monogo.Level) b
 func (w *WhatFailureGroup) Handle(ctx context.Context, record monogo.Record) error {
 	record = w.ProcessRecord(record)
 	for _, h := range w.handlers {
-		if h.IsHandling(ctx, record.Level) {
+		if safeIsHandling(h, w.onError, ctx, record.Level) {
 			invokeSafe(h, w.onError, func() error {
 				return h.Handle(ctx, record)
 			})
@@ -110,7 +111,7 @@ func (w *WhatFailureGroup) HandleBatch(ctx context.Context, records []monogo.Rec
 			})
 		} else {
 			for _, rec := range records {
-				if h.IsHandling(ctx, rec.Level) {
+				if safeIsHandling(h, w.onError, ctx, rec.Level) {
 					invokeSafe(h, w.onError, func() error {
 						return h.Handle(ctx, rec)
 					})
@@ -130,6 +131,15 @@ func (w *WhatFailureGroup) Close(ctx context.Context) error {
 		})
 	}
 	return nil
+}
+
+func safeIsHandling(h monogo.Handler, onError WhatFailureCallback, ctx context.Context, level monogo.Level) bool {
+	var handled bool
+	invokeSafe(h, onError, func() error {
+		handled = h.IsHandling(ctx, level)
+		return nil
+	})
+	return handled
 }
 
 func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) {

@@ -354,10 +354,10 @@ func TestFilterHandlerHandleBatch(t *testing.T) {
 	filter := handler.NewFilter(inner, monogo.INFO, monogo.WARNING)
 
 	records := []monogo.Record{
-		{Message: "debug", Level: monogo.DEBUG},     // filtered out
-		{Message: "info", Level: monogo.INFO},       // passes
-		{Message: "warn", Level: monogo.WARNING},   // passes
-		{Message: "error", Level: monogo.ERROR},     // filtered out
+		{Message: "debug", Level: monogo.DEBUG},  // filtered out
+		{Message: "info", Level: monogo.INFO},    // passes
+		{Message: "warn", Level: monogo.WARNING}, // passes
+		{Message: "error", Level: monogo.ERROR},  // filtered out
 	}
 
 	if err := filter.HandleBatch(context.Background(), records); err != nil {
@@ -968,6 +968,7 @@ func TestDeduplicationHandlerCustomStore(t *testing.T) {
 type failingMockHandler struct {
 	name             string
 	minLevel         monogo.Level
+	panicIsHandling  bool
 	failHandle       bool
 	panicHandle      bool
 	panicHandleError bool
@@ -982,6 +983,9 @@ type failingMockHandler struct {
 }
 
 func (f *failingMockHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	if f.panicIsHandling {
+		panic("isHandling panic simulated: " + f.name)
+	}
 	return level >= f.minLevel
 }
 
@@ -1024,15 +1028,19 @@ func (f *failingMockHandler) Close(_ context.Context) error {
 }
 
 type failingNonBatchHandler struct {
-	name        string
-	minLevel    monogo.Level
-	failHandle  bool
-	panicHandle bool
-	handleCalls int
-	records     []monogo.Record
+	name            string
+	minLevel        monogo.Level
+	panicIsHandling bool
+	failHandle      bool
+	panicHandle     bool
+	handleCalls     int
+	records         []monogo.Record
 }
 
 func (f *failingNonBatchHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	if f.panicIsHandling {
+		panic("non-batch isHandling panic simulated: " + f.name)
+	}
 	return level >= f.minLevel
 }
 
@@ -1250,6 +1258,91 @@ func TestWhatFailureGroupIsHandling(t *testing.T) {
 	}
 }
 
+func TestWhatFailureGroupIsHandling_PanicSuppression(t *testing.T) {
+	ctx := context.Background()
+	hPanicking := &failingMockHandler{name: "panic-handling", minLevel: monogo.DEBUG, panicIsHandling: true}
+	hNormal := handler.NewTest(monogo.INFO)
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{hPanicking, hNormal},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	// DEBUG: hPanicking panics, hNormal doesn't handle -> false, no crash
+	if wfg.IsHandling(ctx, monogo.DEBUG) {
+		t.Errorf("expected false for DEBUG")
+	}
+	if len(reportedErrors) != 1 {
+		t.Fatalf("expected 1 reported error from IsHandling panic, got %d", len(reportedErrors))
+	}
+
+	// INFO: hPanicking panics, hNormal handles -> true, no crash
+	if !wfg.IsHandling(ctx, monogo.INFO) {
+		t.Errorf("expected true for INFO")
+	}
+	if len(reportedErrors) != 2 {
+		t.Fatalf("expected 2 reported errors, got %d", len(reportedErrors))
+	}
+}
+
+func TestWhatFailureGroupHandle_IsHandlingPanicSuppression(t *testing.T) {
+	ctx := context.Background()
+	hPanicking := &failingMockHandler{name: "panic-handling", minLevel: monogo.DEBUG, panicIsHandling: true}
+	hHealthy := handler.NewTest(monogo.DEBUG)
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{hPanicking, hHealthy},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	rec := monogo.Record{Message: "msg", Level: monogo.INFO}
+	if err := wfg.Handle(ctx, rec); err != nil {
+		t.Fatalf("expected nil error from Handle, got: %v", err)
+	}
+
+	if len(hHealthy.Records()) != 1 {
+		t.Errorf("expected healthy handler to receive record despite isHandling panic")
+	}
+	if len(reportedErrors) != 1 {
+		t.Errorf("expected 1 reported error from isHandling panic, got %d", len(reportedErrors))
+	}
+}
+
+func TestWhatFailureGroupHandleBatch_NonBatchIsHandlingPanicSuppression(t *testing.T) {
+	ctx := context.Background()
+	hPanicking := &failingNonBatchHandler{name: "nb-panic-handling", minLevel: monogo.DEBUG, panicIsHandling: true}
+	hHealthy := &failingNonBatchHandler{name: "nb-healthy", minLevel: monogo.DEBUG}
+
+	var reportedErrors []string
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{hPanicking, hHealthy},
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			reportedErrors = append(reportedErrors, err.Error())
+		}),
+	)
+
+	records := []monogo.Record{
+		{Message: "r1", Level: monogo.INFO},
+		{Message: "r2", Level: monogo.INFO},
+	}
+	if err := wfg.HandleBatch(ctx, records); err != nil {
+		t.Fatalf("expected nil error from HandleBatch, got: %v", err)
+	}
+
+	if len(hHealthy.records) != 2 {
+		t.Errorf("expected healthy non-batch handler to receive 2 records, got %d", len(hHealthy.records))
+	}
+	if len(reportedErrors) != 2 {
+		t.Errorf("expected 2 reported errors for the 2 records in batch, got %d", len(reportedErrors))
+	}
+}
+
 func TestWhatFailureGroupWithProcessor(t *testing.T) {
 	ctx := context.Background()
 	h1 := handler.NewTest(monogo.DEBUG)
@@ -1344,4 +1437,3 @@ func TestWhatFailureGroupHandlersInspection(t *testing.T) {
 		t.Errorf("expected Handlers() to return defensive copy")
 	}
 }
-
