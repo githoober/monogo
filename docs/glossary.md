@@ -42,6 +42,7 @@ A function or component that enriches `Record.Extra` with additional system meta
 Transforms a `Record` into a byte slice or string format for output. Examples:
 - `Line`: Customizable text line template.
 - `JSON`: JSON payload formatter.
+- `Logfmt`: Canonical key=value logfmt formatter with configurable field names, prefixes, and safe quoting.
 
 ### Ambient Context
 Contextual key-value pairs stored in Go's `context.Context` (via `monogo.WithContext` / `monogo.WithField`) that are automatically extracted and attached to log entries by all Logger level methods.
@@ -62,4 +63,8 @@ A flood-control decorator handler (`handler.Deduplication`) that suppresses iden
 
 ### WhatFailureGroup Handler
 A resilient multiplexing handler (`handler.WhatFailureGroup`) that forwards log records to a slice of handlers while swallowing and suppressing any errors or recovered panics returned by individual handlers during `Handle`, `HandleBatch`, or `Close`. Always returns `nil` from operations to guarantee that unreliable secondary logging sinks (e.g. webhooks, Slack alerts, Elasticsearch) do not interrupt primary logging or cause application errors. Supports an optional callback (`handler.WithWhatFailureCallback`) for metrics and telemetry without failing the caller.
+
+### Logfmt Formatter
+A structured formatter (`formatter.Logfmt`) that serializes log records into standard `key=value` logfmt lines (standard for Grafana Loki, Promtail, Heroku, and Go CLI conventions). Supports configurable field keys (`WithTimeKey`, `WithLevelKey`, `WithChannelKey`, `WithMessageKey`), prefixes for context and extra maps (`WithContextPrefix`, `WithExtraPrefix`), custom timestamp layouts, and canonical quoting rules for values containing whitespace, quotes, or delimiter characters. Fully implements `monogo.BatchFormatter`.
+
 

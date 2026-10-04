@@ -15,6 +15,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Batch Handling** | `handleBatch(array $records)` / `formatBatch` | `BatchHandler` / `BatchFormatter` interfaces | Optional segregated interfaces (`BatchHandler`, `BatchFormatter`) avoid forcing iteration boilerplate on simple handlers while enabling atomic flushes and bulk formatting where supported. |
 | **Deduplication** | `DeduplicationHandler` (file-based store) | `Deduplication` (`DeduplicationStore` interface) | Thread-safe in-memory cache with zero-goroutine auto-pruning eliminates disk I/O in long-running Go services while supporting pluggable backends. |
 | **Failure Tolerance** | `WhatFailureGroupHandler` (catches `Throwable`) | `WhatFailureGroup` (suppresses errors and panics) | Intercepts errors and recovered panics from individual sub-handlers, never bubbling errors to caller, with optional error callback for telemetry. |
+| **Logfmt Formatting** | `LogfmtFormatter` | `Logfmt` / `LogfmtFormatter` (`BatchFormatter`) | Formats structured records into canonical `key=value` logfmt pairs with configurable keys, prefixes, and quoting rules. |
 | **Concurrency** | Single-threaded PHP execution | Thread-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across concurrent goroutines in Go web servers/workers. |
 
 ---
@@ -27,7 +28,7 @@ This document provides a comparative analysis of **Monogo** (`github.com/githoob
 | **Call-site Fields** | `Context` map | `WithFields` | `Attr` / variadic | Typed `Field`s | Chained `Fields` |
 | **System Metadata** | `Extra` map (via Processors) | Hooks | Handler wrappers | Core / Encoders | Event hooks |
 | **Handler Pipeline** | Handlers stack (`Deduplication`, `FingersCrossed`, `Buffer`, `Stream`) | Hooks / `io.Writer` | `slog.Handler` | `zapcore.Core` | `io.Writer` |
-| **Formatters** | `Formatter` (`Line`, `JSON`) | `Formatter` | Text / JSON | Encoders | Console / JSON |
+| **Formatters** | `Formatter` (`Line`, `JSON`, `Logfmt`) | `Formatter` | Text / JSON | Encoders | Console / JSON |
 
 ---
 

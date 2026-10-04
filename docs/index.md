@@ -7,7 +7,7 @@ Welcome to the documentation for **Monogo** (`github.com/githoober/monogo`), a f
 - [**Architecture & Design Decisions**](architecture.md): Explains the core design choices, pluggable backend adapters (`log/slog`, `zerolog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
 - [**Comparison & Go Idioms**](comparison.md): Comparative analysis against PHP Monolog, `slog`, `logrus`, `zap`, `zerolog`, and idiomatic Go design choices.
 - [**Deliberately Unimplemented Features**](deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
-- [**Glossary & Concepts**](glossary.md): Terminology and concepts including Channels, Handlers (Stream, Deduplication, WhatFailureGroup, FingersCrossed, etc.), Processors, Per-Handler Processors, Formatters, Bubbling, and Batching.
+- [**Glossary & Concepts**](glossary.md): Terminology and concepts including Channels, Handlers (Stream, Deduplication, WhatFailureGroup, FingersCrossed, etc.), Processors, Per-Handler Processors, Formatters (Line, JSON, Logfmt), Bubbling, and Batching.
 
 ## Quick Overview
 
