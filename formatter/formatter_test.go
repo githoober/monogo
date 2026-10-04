@@ -540,3 +540,124 @@ func TestLogfmtFormatter_StreamHandlerIntegration(t *testing.T) {
 		t.Errorf("unexpected stream output:\ngot:  %q\nwant: %q", buf.String(), expected)
 	}
 }
+
+type panickingNilError struct {
+	msg string
+}
+
+func (e *panickingNilError) Error() string {
+	return e.msg
+}
+
+type panickingNilStringer struct {
+	val string
+}
+
+func (s *panickingNilStringer) String() string {
+	return s.val
+}
+
+func TestLogfmtFormatter_TypedNilSafety(t *testing.T) {
+	f := formatter.NewLogfmt(
+		formatter.WithTimeKey(""),
+		formatter.WithLevelKey(""),
+		formatter.WithChannelKey(""),
+		formatter.WithMessageKey(""),
+	)
+
+	var nilErr *panickingNilError = nil
+	var nilStr *panickingNilStringer = nil
+
+	rec := monogo.Record{
+		Context: map[string]interface{}{
+			"err": nilErr,
+			"str": nilStr,
+		},
+	}
+
+	b, err := f.Format(rec)
+	if err != nil {
+		t.Fatalf("unexpected format error: %v", err)
+	}
+
+	out := string(b)
+	if !strings.Contains(out, "err=<nil>") {
+		t.Errorf("expected err=<nil>, got: %s", out)
+	}
+	if !strings.Contains(out, "str=<nil>") {
+		t.Errorf("expected str=<nil>, got: %s", out)
+	}
+}
+
+func TestLogfmtFormatter_ControlCharsAndEscaping(t *testing.T) {
+	f := formatter.NewLogfmt(
+		formatter.WithTimeKey(""),
+		formatter.WithLevelKey(""),
+		formatter.WithChannelKey(""),
+		formatter.WithMessageKey(""),
+	)
+
+	rec := monogo.Record{
+		Context: map[string]interface{}{
+			"ctrl":  "null=\x00,bell=\a,vtab=\v",
+			"html":  "a < b & c > d",
+			"slash": `path\to\file`,
+		},
+	}
+
+	b, err := f.Format(rec)
+	if err != nil {
+		t.Fatalf("unexpected format error: %v", err)
+	}
+
+	out := string(b)
+	if !strings.Contains(out, `ctrl="null=\u0000,bell=\u0007,vtab=\u000b"`) {
+		t.Errorf("expected JSON-escaped control characters, got: %s", out)
+	}
+	if strings.Contains(out, `\x00`) || strings.Contains(out, `\a`) || strings.Contains(out, `\v`) {
+		t.Errorf("found disallowed Go-style escapes in output: %s", out)
+	}
+	if !strings.Contains(out, `html="a < b & c > d"`) {
+		t.Errorf("expected unescaped HTML characters, got: %s", out)
+	}
+	if !strings.Contains(out, `slash="path\\to\\file"`) {
+		t.Errorf("expected escaped backslashes, got: %s", out)
+	}
+}
+
+func TestLogfmtFormatter_UnicodeAndMalformedKeys(t *testing.T) {
+	f := formatter.NewLogfmt(
+		formatter.WithTimeKey(""),
+		formatter.WithLevelKey(""),
+		formatter.WithChannelKey(""),
+		formatter.WithMessageKey(""),
+	)
+
+	malformedKey := string([]byte{0xff, 0xfe})
+	nonPrintableKey := "user\u200Bname" // zero-width space
+	printableUnicodeKey := "用户_ñ"
+
+	rec := monogo.Record{
+		Context: map[string]interface{}{
+			malformedKey:        "invalid_utf8_key",
+			nonPrintableKey:     "hidden_space",
+			printableUnicodeKey: "valid_unicode",
+		},
+	}
+
+	b, err := f.Format(rec)
+	if err != nil {
+		t.Fatalf("unexpected format error: %v", err)
+	}
+
+	out := string(b)
+	if !strings.Contains(out, "__=invalid_utf8_key") {
+		t.Errorf("expected malformed key to be sanitized to __, got: %s", out)
+	}
+	if !strings.Contains(out, "user_name=hidden_space") {
+		t.Errorf("expected zero-width space in key to be replaced with _, got: %s", out)
+	}
+	if !strings.Contains(out, "用户_ñ=valid_unicode") {
+		t.Errorf("expected printable unicode key preserved, got: %s", out)
+	}
+}

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/githoober/monogo"
 )
@@ -220,13 +222,15 @@ func formatKey(key string) string {
 		return "_"
 	}
 	var buf strings.Builder
-	for i := 0; i < len(key); i++ {
-		c := key[i]
-		if c <= ' ' || c == '=' || c == '"' || c == '\\' || c == 0x7f {
+	for _, r := range key {
+		if r == utf8.RuneError || r <= ' ' || r == '=' || r == '"' || r == '\\' || r == 0x7f || !unicode.IsPrint(r) {
 			buf.WriteByte('_')
 		} else {
-			buf.WriteByte(c)
+			buf.WriteRune(r)
 		}
+	}
+	if buf.Len() == 0 {
+		return "_"
 	}
 	return buf.String()
 }
@@ -236,15 +240,25 @@ func formatString(s string) string {
 		return `""`
 	}
 	if needsQuoting(s) {
-		return strconv.Quote(s)
+		return quoteString(s)
 	}
 	return s
 }
 
+func quoteString(s string) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(s)
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+
 func needsQuoting(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c <= ' ' || c == '=' || c == '"' || c == '\\' || c == 0x7f {
+	if !utf8.ValidString(s) {
+		return true
+	}
+	for _, r := range s {
+		if r <= ' ' || r == '=' || r == '"' || r == '\\' || r == 0x7f || !unicode.IsPrint(r) {
 			return true
 		}
 	}
@@ -293,10 +307,8 @@ func formatValue(val interface{}) string {
 		return formatString(v.String())
 	case []byte:
 		return formatString(string(v))
-	case error:
-		return formatString(v.Error())
-	case fmt.Stringer:
-		return formatString(v.String())
+	case error, fmt.Stringer:
+		return formatString(fmt.Sprint(v))
 	default:
 		b, err := json.Marshal(v)
 		if err != nil {
