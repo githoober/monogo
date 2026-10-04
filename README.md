@@ -13,7 +13,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
 - **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Environment variables, Memory stats, Tags, Unique request ID/UID).
-- **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes).
+- **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
   - `zerolog` Backend (use `zerolog` as a Monogo output handler).
@@ -333,6 +333,44 @@ func main() {
 	// Log JSON entries
 	logger.Info(ctx, "Server started", map[string]interface{}{"port": 8080})
 	logger.Error(ctx, "Database query failed", map[string]interface{}{"error": "timeout", "query_ms": 120})
+}
+```
+
+## Logfmt Formatter (Go Cloud Extension)
+
+As a built-in extension beyond PHP Monolog tailored for the Go cloud ecosystem, Monogo provides the `Logfmt` formatter (`formatter.Logfmt`, aliased as `formatter.LogfmtFormatter`), which formats structured log records into canonical `key=value` logfmt lines (standard for Grafana Loki, Promtail, Heroku, and Go CLI conventions):
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/formatter"
+	"github.com/githoober/monogo/handler"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Create a stream handler using Logfmt formatting
+	logfmtHandler := handler.NewStream(
+		os.Stdout,
+		monogo.DEBUG,
+		handler.WithFormatter(formatter.NewLogfmt(
+			formatter.WithTimeKey("ts"),
+			formatter.WithLevelKey("lvl"),
+			formatter.WithChannelKey("channel"),
+			formatter.WithMessageKey("msg"),
+		)),
+	)
+
+	logger := monogo.New("app", []monogo.Handler{logfmtHandler}, nil)
+	logger.Info(ctx, "User logged in", map[string]interface{}{"user_id": 42, "ip": "192.168.1.1"})
+	// Output:
+	// ts=2026-10-04T12:00:00Z lvl=INFO channel=app msg="User logged in" ip=192.168.1.1 user_id=42
 }
 ```
 

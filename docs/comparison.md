@@ -2,9 +2,10 @@
 
 This document details the provenance and design of **Monogo** (`github.com/githoober/monogo`), providing an explicit, transparent accounting of:
 1. **Handlers, formatters, and concepts modeled after PHP Monolog core** (`Seldaek/monolog`).
-2. **What is new in Monogo** (idiomatic Go innovations, cloud-native adaptations, and extensions).
-3. **What is deliberately omitted** from Monolog (and why).
-4. **How Monogo compares against other popular Go logging frameworks** (`log/slog`, `logrus`, `zap`, `zerolog`).
+2. **Fundamental language and paradigm differences** between PHP and Go.
+3. **What is new in Monogo** (idiomatic Go innovations, cloud-native adaptations, and extensions).
+4. **What is deliberately omitted** from Monolog (and why).
+5. **How Monogo compares against other popular Go logging frameworks** (`log/slog`, `logrus`, `zap`, `zerolog`).
 
 ---
 
@@ -22,6 +23,17 @@ Monogo preserves the core architecture, data model, and processing pipeline of P
 | **Bubbling Control** | `$bubble = false` on `AbstractProcessingHandler` | `monogo.Bubbler` interface & `handler.WithBubble(bool)` | Prevents record propagation down the handler stack when a handler consumes the record. |
 | **Per-Handler Processors** | `ProcessableHandlerInterface` / `pushProcessor` | `monogo.ProcessableHandler` & `handler.WithProcessor(...)` | Allows individual handlers to attach dedicated processors. |
 | **Batch Processing** | `HandlerInterface::handleBatch` & `FormatterInterface::formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Modeled after Monolog's batch contracts. In PHP Monolog, `handleBatch` is mandatory on `HandlerInterface` and `formatBatch` on `FormatterInterface` (relying on base class `foreach` loops). Monogo adapts this using Go's Interface Segregation Principle (`BatchHandler` / `BatchFormatter` are optional interfaces checked via type assertion, falling back automatically to single-record `Handle` loops). |
+
+---
+
+### Language & Paradigm Translations
+| Paradigm Aspect | PHP Monolog | Monogo | Idiomatic Go Rationale |
+| :--- | :--- | :--- | :--- |
+| **Type System & OOP** | Classes, Interfaces, Inheritance | Structs, Small Interfaces, Embedding | Go favors composition over deep inheritance hierarchies. Shared handler logic is embedded via `handler.BaseHandler`. |
+| **Error Handling** | Exceptions (`throw \Exception`) | Explicit `error` return values | Idiomatic Go error handling throughout pipeline contracts (`Handle`, `Format`, `Close`). |
+| **Call-site Fields** | Array `['user' => 42]` | Variadic `...map[string]interface{}` & `context.Context` | Supports both in-place map literals and Go's ambient `context.Context` propagation. |
+| **Processors** | Callable `function(LogRecord $r)` | `Processor` interface & `ProcessorFunc` | Mirrors Go's standard `http.Handler` / `http.HandlerFunc` functional pattern. |
+| **Concurrency** | Single-threaded PHP request lifecycle | Goroutine-safe (`sync.RWMutex` / `sync.Mutex`) | Safely usable across thousands of concurrent goroutines in 24/7 web servers and background workers. |
 
 ---
 
@@ -70,46 +82,59 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 
 While Monogo mirrors Monolog's architecture, Go's runtime characteristics (goroutines, static typing, explicit error handling, cloud containerization) require distinct design patterns:
 
-### 1. `Env` & `EnvMap` Processors
+### 1. `Logfmt` Formatter
+- **Status:** **New in Monogo** *(Not in PHP Monolog core)*.
+- **What it does:** [`formatter.Logfmt`](../formatter/logfmt.go) (aliased as `formatter.LogfmtFormatter`) formats log records into canonical `key=value` logfmt lines (e.g. `ts=2026-10-04T12:00:00Z lvl=INFO channel=app msg="User logged in"`). Implements `monogo.Formatter` and `monogo.BatchFormatter`.
+- **Rationale:** Logfmt is a ubiquitous, lightweight format in the Go cloud-native ecosystem (popularized by Grafana Loki, Promtail, Heroku, and Go CLI tools). In PHP Monolog, logfmt was never part of core and only existed as third-party community packages. Monogo provides built-in first-class logfmt support with configurable keys, prefixes, rune-aware key sanitization, and JSON-compatible control character escaping.
+
+### 2. `Env` & `EnvMap` Processors
 - **Status:** **New in Monogo** *(Not in PHP Monolog core)*.
 - **What it does:** [`processor.Env(keys...)`](../processor/processor.go) extracts specified environment variables into `Extra["env"]`, while [`processor.EnvMap(mapping)`](../processor/processor.go) maps environment variables directly to top-level keys in `Record.Extra`.
 - **Rationale:** In containerized cloud environments (Kubernetes, AWS ECS, GCP Cloud Run), runtime metadata such as `POD_NAME`, `NAMESPACE`, `CLUSTER`, or `DEPLOY_ENV` is injected via environment variables. Providing built-in environment processors enables zero-boilerplate injection of container metadata.
 
-### 2. First-Class `context.Context` Architecture
+### 3. First-Class `context.Context` Architecture
 - **Status:** **New in Monogo** *(Go standard library idiom)*.
 - **What it does:**
   - `ctx context.Context` is strictly the mandatory first argument on all `Logger` level methods (`logger.Info(ctx, ...)`), handler operations (`Handler.Handle(ctx, record)`, `BatchHandler.HandleBatch(ctx, records)`), and lifecycle methods (`Handler.Close(ctx)`).
   - Ambient contextual fields can be attached to Go contexts via `monogo.WithContext(ctx, fields)` or `monogo.WithField(ctx, key, value)` and are automatically extracted and merged into log records across goroutines.
   - Unlike common anti-patterns, `context.Context` is **not stored inside the `Record` struct**. `Record` remains a clean, serializable data carrier, while `ctx` travels explicitly through function parameters.
 
-### 3. Bidirectional Standard Library `log/slog` & `zerolog` Adapters
-- **Status:** **New in Monogo** *(Go ecosystem interoperability)*.
+### 4. Zero External Dependencies in Core & Pluggable Backend Adapters
+- **Status:** **New in Monogo** *(Dependency isolation)*.
 - **What it does:**
-  - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
-  - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
-  - `adapter/zerologadapter.New`: Routes Monogo log records to `rs/zerolog`.
-  - Adapters live in isolated subpackages (`adapter/*`) to keep the core `monogo` package dependency-free.
+  - The root `monogo` package relies exclusively on the Go standard library.
+  - Framework-specific integrations live in isolated subpackages:
+    - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
+    - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
+    - `adapter/zerologadapter.New`: Routes Monogo log records to `rs/zerolog`.
+  - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 
-### 4. Concurrent Goroutine Safety & Copy-On-Write Isolation
+### 5. Concurrent Goroutine Safety & Copy-On-Write Isolation
 - **Status:** **New in Monogo** *(Concurrency paradigm difference)*.
 - **What it does:**
   - PHP Monolog executes in single-threaded request lifecycles where loggers are instantiated per request. In Go, a single `*monogo.Logger` and its handlers are shared concurrently across thousands of goroutines.
   - All Monogo components are strictly thread-safe using `sync.RWMutex` / `sync.Mutex`.
   - **Copy-On-Write Handler Isolation:** In PHP Monolog, handlers mutate the `LogRecord` directly. In Monogo, when per-handler processors are configured on a handler, `record.Clone()` makes deep copies of `Context` and `Extra` maps before running the handler's processors. Destination-specific mutations (such as masking secrets or adding destination tags) cannot leak to subsequent handlers in the stack or race across goroutines.
 
-### 5. Construction-Time Immutability via Functional Options
+### 6. Construction-Time Immutability via Functional Options
 - **Status:** **New in Monogo** *(Idiomatic Go configuration)*.
 - **What it does:**
   - Replaces PHP Monolog's mutable runtime setters (`$handler->setLevel(...)`, `$handler->setFormatter(...)`) with immutable functional options (`handler.WithBubble`, `handler.WithFormatter`, `handler.WithProcessor`).
   - Guarantees handlers and loggers are immutable after creation, eliminating data races on read/write paths during high-throughput logging.
 
-### 6. In-Memory Auto-Pruning for Long-Running Processes
+### 7. In-Memory Auto-Pruning for Long-Running Processes
 - **Status:** **New in Monogo** *(Process lifecycle difference)*.
 - **What it does:**
   - PHP Monolog's `DeduplicationHandler` wrote state to local disk files because PHP processes die at the end of each HTTP request.
   - Monogo's `Deduplication` handler uses a high-performance in-memory cache with zero-goroutine lazy auto-pruning. It avoids disk I/O, prevents memory leaks in 24/7 services, and supports pluggable custom store backends (`DeduplicationStore`).
 
-### 7. Batch JSON Formatting Modes
+### 8. Segregated Optional Batch Interfaces
+- **Status:** **New in Monogo** *(Interface Segregation Principle)*.
+- **What it does:**
+  - Instead of forcing `HandleBatch` onto every single handler struct (which would require dummy loop boilerplate for custom handlers), Monogo segregates `Handler` from `BatchHandler` and `Formatter` from `BatchFormatter`.
+  - Buffering handlers (`Buffer`, `FingersCrossed`) detect `BatchHandler` via runtime type assertion (`if bh, ok := h.(BatchHandler); ok`), executing atomic bulk writes when supported and automatically falling back to single-record `Handle` loops when not.
+
+### 9. Batch JSON Formatting Modes
 - **Status:** **New in Monogo**.
 - **What it does:**
   - `formatter.JSON` supports two batch formatting modes via `WithBatchMode`:
@@ -144,5 +169,5 @@ Several PHP Monolog and PSR-3 features were intentionally omitted from Monogo du
 | **Handler Pipeline** | Pipeline stack (`Deduplication`, `FingersCrossed`, `Buffer`, `Stream`, `WhatFailureGroup`) | Single `slog.Handler` | Hooks / `io.Writer` | `zapcore.Core` | `io.Writer` |
 | **Two-Tier Processors** | Logger-level & Per-Handler processors with copy-on-write isolation | Not built-in | Hooks (global only) | Not built-in | Hooks |
 | **Propagation Control** | Bubbling control (`handler.WithBubble(false)`) | Not built-in | Not built-in | Not built-in | Not built-in |
-| **Formatters** | Segregated `Formatter` & `BatchFormatter` (`Line`, `JSON`) | `TextHandler` / `JSONHandler` | `Formatter` (`Text`, `JSON`) | Encoders | Console / JSON |
+| **Formatters** | Segregated `Formatter` & `BatchFormatter` (`Line`, `JSON`, `Logfmt`) | `TextHandler` / `JSONHandler` | `Formatter` (`Text`, `JSON`) | Encoders | Console / JSON |
 | **Interoperability** | Bidirectional `slog` bridge + `zerolog` adapter | Native | Via wrappers | Via `zapio` | Native |
