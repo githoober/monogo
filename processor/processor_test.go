@@ -1,6 +1,7 @@
 package processor_test
 
 import (
+	"math"
 	"testing"
 
 	"github.com/githoober/monogo"
@@ -182,6 +183,34 @@ func TestUIDProcessor(t *testing.T) {
 	u32 := processor.NewUIDProcessor(32)
 	if len(u32.UID()) != 32 {
 		t.Fatalf("expected UID length 32, got %d (%s)", len(u32.UID()), u32.UID())
+	}
+
+	// Boundary length tests: 1 (MinUIDLength) and 64 (MaxUIDLength)
+	uMin := processor.NewUIDProcessor(1)
+	if len(uMin.UID()) != 1 {
+		t.Fatalf("expected UID length 1, got %d", len(uMin.UID()))
+	}
+	uMax := processor.NewUIDProcessor(64)
+	if len(uMax.UID()) != 64 {
+		t.Fatalf("expected UID length 64, got %d", len(uMax.UID()))
+	}
+
+	// Out-of-bounds lengths should safely default to 16 without overflow, panic, or OOM
+	uNegative := processor.NewUIDProcessor(-10)
+	if len(uNegative.UID()) != 16 {
+		t.Fatalf("expected negative length to default to 16, got %d", len(uNegative.UID()))
+	}
+	uZero := processor.NewUIDProcessor(0)
+	if len(uZero.UID()) != 16 {
+		t.Fatalf("expected zero length to default to 16, got %d", len(uZero.UID()))
+	}
+	uOverMax := processor.NewUIDProcessor(65)
+	if len(uOverMax.UID()) != 16 {
+		t.Fatalf("expected length > 64 to default to 16, got %d", len(uOverMax.UID()))
+	}
+	uHuge := processor.NewUIDProcessor(math.MaxInt)
+	if len(uHuge.UID()) != 16 {
+		t.Fatalf("expected math.MaxInt to default to 16 without overflow/panic, got %d", len(uHuge.UID()))
 	}
 
 	// Concurrent usage safety

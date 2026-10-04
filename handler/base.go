@@ -28,6 +28,7 @@ type options struct {
 	dedupKeyFunc        func(monogo.Record) string
 	dedupStore          DeduplicationStore
 	whatFailureCallback func(error, monogo.Handler)
+	resetErrorCallback  func(error)
 }
 
 func defaultOptions() options {
@@ -69,6 +70,13 @@ func WithProcessor(processors ...monogo.Processor) Option {
 // WithProcessors is an alias for WithProcessor to configure multiple processors at construction time.
 func WithProcessors(processors ...monogo.Processor) Option {
 	return WithProcessor(processors...)
+}
+
+// WithResetErrorCallback registers a callback invoked if an error occurs during Reset() (e.g. flushing a buffer).
+func WithResetErrorCallback(fn func(error)) Option {
+	return func(o *options) {
+		o.resetErrorCallback = fn
+	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.

@@ -2,7 +2,9 @@ package monogo_test
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/adapter/slogadapter"
@@ -434,5 +436,106 @@ func TestLoggerImplementsResettable(t *testing.T) {
 	l := monogo.New("test", nil, nil)
 	var r monogo.Resettable = l
 	r.Reset()
+}
+
+type blockingResettableHandler struct {
+	mu           sync.Mutex
+	records      []monogo.Record
+	handleBlock  chan struct{}
+	handleStart  chan struct{}
+	resetCalled  bool
+}
+
+func (b *blockingResettableHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	return true
+}
+
+func (b *blockingResettableHandler) Handle(ctx context.Context, record monogo.Record) error {
+	if b.handleStart != nil {
+		select {
+		case b.handleStart <- struct{}{}:
+		default:
+		}
+	}
+	if b.handleBlock != nil {
+		<-b.handleBlock
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.records = append(b.records, record)
+	return nil
+}
+
+func (b *blockingResettableHandler) Close(ctx context.Context) error {
+	return nil
+}
+
+func (b *blockingResettableHandler) Reset() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.resetCalled = true
+	b.records = nil
+}
+
+func TestLoggerReset_LifecycleBarrier(t *testing.T) {
+	h := &blockingResettableHandler{
+		handleBlock: make(chan struct{}),
+		handleStart: make(chan struct{}, 1),
+	}
+
+	logger := monogo.New("barrier-test", []monogo.Handler{h}, nil)
+	ctx := context.Background()
+
+	// Launch in-flight Log call
+	logDone := make(chan error, 1)
+	go func() {
+		logDone <- logger.Info(ctx, "in-flight log")
+	}()
+
+	// Wait until Handle has started executing
+	<-h.handleStart
+
+	// Launch Reset in separate goroutine; it should block until in-flight Log finishes
+	resetDone := make(chan struct{})
+	go func() {
+		logger.Reset()
+		close(resetDone)
+	}()
+
+	// Ensure Reset has not completed yet
+	select {
+	case <-resetDone:
+		t.Fatalf("Reset() should be blocked by in-flight Log()")
+	case <-time.After(30 * time.Millisecond):
+		// Expected: Reset is waiting on cycleMu
+	}
+
+	// Release in-flight Log
+	close(h.handleBlock)
+
+	if err := <-logDone; err != nil {
+		t.Fatalf("Log returned error: %v", err)
+	}
+
+	// Reset should now complete
+	select {
+	case <-resetDone:
+		// Succeeded
+	case <-time.After(1 * time.Second):
+		t.Fatalf("Reset() timed out waiting for cycleMu")
+	}
+
+	// After Reset completes, records should have been cleared by Reset()
+	h.mu.Lock()
+	recordCount := len(h.records)
+	resetWasCalled := h.resetCalled
+	h.mu.Unlock()
+
+	if !resetWasCalled {
+		t.Errorf("expected Reset() to have been called on handler")
+	}
+	if recordCount != 0 {
+		t.Errorf("expected 0 records after in-flight log completed and Reset ran, got %d", recordCount)
+	}
 }
 

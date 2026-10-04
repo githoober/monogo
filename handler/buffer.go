@@ -10,23 +10,32 @@ import (
 // Buffer buffers records until a capacity limit is reached or flush Level is triggered.
 type Buffer struct {
 	BaseHandler
-	handler     monogo.Handler
-	bufferLimit int
-	flushLevel  monogo.Level
-	buffer      []monogo.Record
-	mu          sync.Mutex
+	handler            monogo.Handler
+	bufferLimit        int
+	flushLevel         monogo.Level
+	buffer             []monogo.Record
+	lastResetErr       error
+	resetErrorCallback func(error)
+	mu                 sync.Mutex
 }
 
 var _ monogo.Resettable = (*Buffer)(nil)
 
 // NewBuffer creates a Buffer handler with optional configuration options (defaults: bubble=true).
 func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level, opts ...Option) *Buffer {
+	o := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
 	return &Buffer{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
-		handler:     handler,
-		bufferLimit: bufferLimit,
-		flushLevel:  flushLevel,
-		buffer:      make([]monogo.Record, 0, bufferLimit),
+		BaseHandler:        NewBaseHandler(monogo.DEBUG, opts...),
+		handler:            handler,
+		bufferLimit:        bufferLimit,
+		flushLevel:         flushLevel,
+		buffer:             make([]monogo.Record, 0, bufferLimit),
+		resetErrorCallback: o.resetErrorCallback,
 	}
 }
 
@@ -97,12 +106,30 @@ func (b *Buffer) Close(ctx context.Context) error {
 
 // Reset flushes any buffered records to the wrapped handler, resets per-handler processors,
 // and resets the wrapped handler if it implements monogo.Resettable.
+// If Flush encounters an error, it is recorded and can be queried via LastResetError(),
+// or observed via WithResetErrorCallback.
 func (b *Buffer) Reset() {
-	_ = b.Flush(context.Background())
+	err := b.Flush(context.Background())
+	b.mu.Lock()
+	b.lastResetErr = err
+	cb := b.resetErrorCallback
+	b.mu.Unlock()
+
+	if err != nil && cb != nil {
+		cb(err)
+	}
+
 	b.BaseHandler.Reset()
 	if r, ok := b.handler.(monogo.Resettable); ok {
 		r.Reset()
 	}
+}
+
+// LastResetError returns the last error encountered while flushing during Reset(), or nil if none.
+func (b *Buffer) LastResetError() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.lastResetErr
 }
 
 // Clear discards all buffered records without sending them to the wrapped handler.

@@ -3,10 +3,12 @@ package processor
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"runtime"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/githoober/monogo"
 )
@@ -92,13 +94,26 @@ var (
 	_ monogo.Resettable = (*UIDProcessor)(nil)
 )
 
+const (
+	// DefaultUIDLength is the default character length of generated UIDs (16 hex characters).
+	DefaultUIDLength = 16
+	// MinUIDLength is the minimum supported character length of a UID.
+	MinUIDLength = 1
+	// MaxUIDLength is the maximum supported character length of a UID (matching Monolog's 64-character limit).
+	MaxUIDLength = 64
+)
+
 // NewUIDProcessor creates a new resettable UIDProcessor with an optional hex length (default: 16 characters).
+// Length must be between 1 and 64 characters (inclusive), matching Monolog's UidProcessor constraints.
+// If omitted or outside this range, DefaultUIDLength (16) is used.
 // The UID remains constant across log records until Reset() is called, making it ideal for tracking
 // requests, jobs, or operations across a lifecycle in long-running processes (workers, servers).
 func NewUIDProcessor(length ...int) *UIDProcessor {
-	l := 16
-	if len(length) > 0 && length[0] > 0 {
-		l = length[0]
+	l := DefaultUIDLength
+	if len(length) > 0 {
+		if length[0] >= MinUIDLength && length[0] <= MaxUIDLength {
+			l = length[0]
+		}
 	}
 	p := &UIDProcessor{
 		length: l,
@@ -134,13 +149,35 @@ func (u *UIDProcessor) Process(r monogo.Record) monogo.Record {
 	return r
 }
 
+var (
+	uidFallbackMu      sync.Mutex
+	uidFallbackCounter uint64
+)
+
 func generateUID(length int) string {
-	if length <= 0 {
-		length = 16
+	if length < MinUIDLength || length > MaxUIDLength {
+		length = DefaultUIDLength
 	}
 	bytesLen := (length + 1) / 2
 	b := make([]byte, bytesLen)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to high-resolution timestamp + monotonic counter to guarantee uniqueness
+		// even if the system cryptographic entropy source fails.
+		uidFallbackMu.Lock()
+		uidFallbackCounter++
+		cnt := uidFallbackCounter
+		uidFallbackMu.Unlock()
+
+		h := fmt.Sprintf("%016x%016x", time.Now().UnixNano(), cnt)
+		if len(h) > length {
+			return h[:length]
+		}
+		for len(h) < length {
+			h += "0"
+		}
+		return h
+	}
+
 	h := hex.EncodeToString(b)
 	if len(h) > length {
 		return h[:length]

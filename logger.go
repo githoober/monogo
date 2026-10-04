@@ -8,6 +8,7 @@ import (
 
 type Logger struct {
 	mu         sync.RWMutex
+	cycleMu    sync.RWMutex
 	name       string
 	handlers   []Handler
 	processors []Processor
@@ -126,6 +127,9 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 		return nil
 	}
 
+	l.cycleMu.RLock()
+	defer l.cycleMu.RUnlock()
+
 	mergedCtx := mergeContexts(FromContext(ctx), mergeContexts(ctxMap...))
 
 	record := Record{
@@ -195,6 +199,9 @@ func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string
 }
 
 func (l *Logger) Close(ctx context.Context) error {
+	l.cycleMu.Lock()
+	defer l.cycleMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var lastErr error
@@ -207,9 +214,12 @@ func (l *Logger) Close(ctx context.Context) error {
 }
 
 // Reset resets all handlers and processors that implement Resettable.
-// This is useful in long-running processes (workers, task runners, HTTP servers)
-// between requests or jobs to reset internal buffers, deduplication caches, and processor state (such as UIDs).
+// It acts as a strict lifecycle barrier: all in-flight Log calls complete before Reset begins,
+// and incoming Log calls wait until Reset completes, preventing records from leaking across cycles.
 func (l *Logger) Reset() {
+	l.cycleMu.Lock()
+	defer l.cycleMu.Unlock()
+
 	l.mu.RLock()
 	handlers := make([]Handler, len(l.handlers))
 	copy(handlers, l.handlers)

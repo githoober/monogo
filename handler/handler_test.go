@@ -1668,3 +1668,53 @@ func TestBaseHandlerReset(t *testing.T) {
 	var nilBase *handler.BaseHandler
 	nilBase.Reset() // should not panic
 }
+
+type failingHandler struct {
+	err error
+}
+
+func (f *failingHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
+	return true
+}
+
+func (f *failingHandler) Handle(ctx context.Context, record monogo.Record) error {
+	return f.err
+}
+
+func (f *failingHandler) Close(ctx context.Context) error {
+	return nil
+}
+
+func TestBufferHandlerReset_FlushError(t *testing.T) {
+	expectedErr := fmt.Errorf("network sink unavailable")
+	failH := &failingHandler{err: expectedErr}
+
+	var observedCallbackErr error
+	bufH := handler.NewBuffer(
+		failH,
+		10,
+		monogo.ERROR,
+		handler.WithResetErrorCallback(func(err error) {
+			observedCallbackErr = err
+		}),
+	)
+
+	ctx := context.Background()
+	_ = bufH.Handle(ctx, monogo.Record{Message: "buffered record", Level: monogo.INFO})
+
+	// Before Reset, LastResetError should be nil
+	if err := bufH.LastResetError(); err != nil {
+		t.Fatalf("expected nil LastResetError before Reset, got %v", err)
+	}
+
+	// Trigger Reset
+	bufH.Reset()
+
+	// Verify error was observed both via LastResetError() and callback
+	if bufH.LastResetError() != expectedErr {
+		t.Errorf("expected LastResetError to be %v, got %v", expectedErr, bufH.LastResetError())
+	}
+	if observedCallbackErr != expectedErr {
+		t.Errorf("expected callback to receive %v, got %v", expectedErr, observedCallbackErr)
+	}
+}
