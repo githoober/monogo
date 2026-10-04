@@ -25,6 +25,7 @@ A destination component responsible for receiving a `Record` and outputting or f
 - `Group`: Multiplexes records to multiple handlers.
 - `Buffer`: Buffers records until capacity or flush level.
 - `Deduplication`: Suppresses duplicate log records occurring within a time window.
+- `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
@@ -58,4 +59,7 @@ Defined by `monogo.ProcessableHandler` (`Processors() []Processor`, `ProcessReco
 
 ### Deduplication Handler
 A flood-control decorator handler (`handler.Deduplication`) that suppresses identical log records repeating within a configurable time window (`time.Duration`). Only records with `Level >= dedupLevel` (default `ERROR`) are deduplicated, while records below the threshold pass through unconditionally. Provides thread-safe, zero-goroutine auto-pruned in-memory storage and supports custom `DeduplicationStore` backends and custom key extractors (`handler.WithDeduplicationKey`).
+
+### WhatFailureGroup Handler
+A resilient multiplexing handler (`handler.WhatFailureGroup`) that forwards log records to a slice of handlers while swallowing and suppressing any errors or recovered panics returned by individual handlers during `Handle`, `HandleBatch`, or `Close`. Always returns `nil` from operations to guarantee that unreliable secondary logging sinks (e.g. webhooks, Slack alerts, Elasticsearch) do not interrupt primary logging or cause application errors. Supports an optional callback (`handler.WithWhatFailureCallback`) for metrics and telemetry without failing the caller.
 
