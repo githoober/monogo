@@ -246,15 +246,18 @@ When per-handler processors are configured, the record is automatically cloned p
 
 Processors enrich log records with contextual and system diagnostic metadata before formatting and dispatching. Monogo includes the following built-in processors:
 
-- **`processor.Caller(skipFrames)`**: Injects calling source file, line number, and function name into `Extra["caller"]`.
-- **`processor.Hostname()`**: Injects the OS hostname into `Extra["hostname"]`.
-- **`processor.ProcessId()`**: Injects the current OS process ID (`os.Getpid()`) into `Extra["pid"]`.
-- **`processor.Memory()`**: Injects runtime memory allocation statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]`.
-- **`processor.UID()`**: Generates a random unique hex request/invocation identifier in `Extra["uid"]`.
-- **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
-- **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]`.
+### Core Monolog Ports
+- **`processor.Caller(skipFrames)`**: Injects calling source file, line number, and function name into `Extra["caller"]` (Monolog `IntrospectionProcessor`).
+- **`processor.Hostname()`**: Injects the OS hostname into `Extra["hostname"]` (Monolog `HostnameProcessor`).
+- **`processor.ProcessId()`**: Injects the current OS process ID (`os.Getpid()`) into `Extra["pid"]` (Monolog `ProcessIdProcessor`).
+- **`processor.Memory()`**: Injects runtime memory allocation statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]` (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
+- **`processor.UID()`**: Generates a random unique hex request/invocation identifier in `Extra["uid"]` (Monolog `UidProcessor`).
+- **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
+- **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
+
+### Monogo Extensions
+- **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
 - **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
-- **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra`.
 
 ## Batch Processing & Buffering
 
@@ -333,9 +336,9 @@ func main() {
 }
 ```
 
-## Logfmt Formatter
+## Logfmt Formatter (Go Cloud Extension)
 
-The `Logfmt` formatter formats structured log records into canonical `key=value` logfmt lines (standard for Grafana Loki, Promtail, Heroku, and Go CLI conventions):
+As a built-in extension beyond PHP Monolog tailored for the Go cloud ecosystem, Monogo provides the `Logfmt` formatter (`formatter.Logfmt`, aliased as `formatter.LogfmtFormatter`), which formats structured log records into canonical `key=value` logfmt lines (standard for Grafana Loki, Promtail, Heroku, and Go CLI conventions):
 
 ```go
 package main
@@ -432,6 +435,13 @@ zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 logger := monogo.New("api", []monogo.Handler{zh}, nil)
 logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "postgres"})
 ```
+
+## Documentation
+
+- [**Lineage, Adapted Counterparts & Go Innovations**](docs/comparison.md): Exhaustive breakdown of handlers, formatters, and concepts modeled after PHP Monolog core, what is new in Monogo (Go idioms and cloud extensions), and comparative analysis against popular Go loggers.
+- [**Architecture & Design Decisions**](docs/architecture.md): Deep dive into core design choices, pluggable backend adapters (`log/slog`, `zerolog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
+- [**Deliberately Unimplemented Features**](docs/deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
+- [**Glossary & Concepts**](docs/glossary.md): Terminology and concepts including Channels, Handlers, Processors, Formatters, Bubbling, and Batching.
 
 ## Testing
 

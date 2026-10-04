@@ -29,20 +29,20 @@ A destination component responsible for receiving a `Record` and outputting or f
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
-- `Caller`: File, line, and function caller info.
-- `Hostname`: OS hostname.
-- `ProcessId`: OS process ID (`os.Getpid()`).
-- `Memory`: Runtime memory statistics.
-- `UID`: Unique invocation request ID.
-- `Git`: Git commit hash, branch, time, and dirty status.
-- `Env` / `EnvMap`: Environment variables.
-- `Tag`: Fixed key-value tag.
+- `Caller`: File, line, and function caller info (Monolog `IntrospectionProcessor`).
+- `Hostname`: OS hostname (Monolog `HostnameProcessor`).
+- `ProcessId`: OS process ID (`os.Getpid()`, Monolog `ProcessIdProcessor`).
+- `Memory`: Runtime memory statistics (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
+- `UID`: Unique invocation request ID (Monolog `UidProcessor`).
+- `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
+- `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
+- `Env` / `EnvMap`: Environment variables (Monogo extension for containerized/cloud environments).
 
 ### Formatter
 Transforms a `Record` into a byte slice or string format for output. Examples:
-- `Line`: Customizable text line template.
-- `JSON`: JSON payload formatter.
-- `Logfmt`: Canonical key=value logfmt formatter with configurable field names, prefixes, and safe quoting.
+- `Line`: Customizable text line template (Monolog `LineFormatter`).
+- `JSON`: JSON payload formatter (Monolog `JsonFormatter`).
+- `Logfmt`: Canonical key=value logfmt formatter with configurable field names, prefixes, and safe quoting (Monogo extension for Go cloud ecosystems like Loki and Promtail).
 
 ### Ambient Context
 Contextual key-value pairs stored in Go's `context.Context` (via `monogo.WithContext` / `monogo.WithField`) that are automatically extracted and attached to log entries by all Logger level methods.
