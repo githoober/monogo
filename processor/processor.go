@@ -2,10 +2,11 @@ package processor
 
 import (
 	"crypto/rand"
-	"fmt"
+	"encoding/hex"
 	"os"
 	"runtime"
 	"runtime/debug"
+	"sync"
 
 	"github.com/githoober/monogo"
 )
@@ -77,19 +78,80 @@ func Tag(key string, value interface{}) monogo.ProcessorFunc {
 	}
 }
 
-// UID generates a random 16-character hex unique identifier string and adds it to Extra["uid"].
-func UID() monogo.ProcessorFunc {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	uid := fmt.Sprintf("%x", b)
+// UIDProcessor generates and attaches a unique identifier string to Extra["uid"].
+// It maintains the same UID across log records within a cycle and regenerates a new UID when Reset() is called.
+type UIDProcessor struct {
+	mu     sync.RWMutex
+	length int
+	uid    string
+}
 
-	return func(r monogo.Record) monogo.Record {
-		if r.Extra == nil {
-			r.Extra = make(map[string]interface{})
-		}
-		r.Extra["uid"] = uid
-		return r
+// Compile-time interface assertions.
+var (
+	_ monogo.Processor  = (*UIDProcessor)(nil)
+	_ monogo.Resettable = (*UIDProcessor)(nil)
+)
+
+// NewUIDProcessor creates a new resettable UIDProcessor with an optional hex length (default: 16 characters).
+// The UID remains constant across log records until Reset() is called, making it ideal for tracking
+// requests, jobs, or operations across a lifecycle in long-running processes (workers, servers).
+func NewUIDProcessor(length ...int) *UIDProcessor {
+	l := 16
+	if len(length) > 0 && length[0] > 0 {
+		l = length[0]
 	}
+	p := &UIDProcessor{
+		length: l,
+	}
+	p.Reset()
+	return p
+}
+
+// UID returns the current UID string.
+func (u *UIDProcessor) UID() string {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+	return u.uid
+}
+
+// Reset generates a new unique identifier.
+func (u *UIDProcessor) Reset() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.uid = generateUID(u.length)
+}
+
+// Process enriches the log record by adding the current UID to Extra["uid"].
+func (u *UIDProcessor) Process(r monogo.Record) monogo.Record {
+	u.mu.RLock()
+	uid := u.uid
+	u.mu.RUnlock()
+
+	if r.Extra == nil {
+		r.Extra = make(map[string]interface{})
+	}
+	r.Extra["uid"] = uid
+	return r
+}
+
+func generateUID(length int) string {
+	if length <= 0 {
+		length = 16
+	}
+	bytesLen := (length + 1) / 2
+	b := make([]byte, bytesLen)
+	_, _ = rand.Read(b)
+	h := hex.EncodeToString(b)
+	if len(h) > length {
+		return h[:length]
+	}
+	return h
+}
+
+// UID creates a new resettable UIDProcessor (default: 16 characters).
+// It maintains the same UID across log records and regenerates a new UID when Reset() is called.
+func UID(length ...int) *UIDProcessor {
+	return NewUIDProcessor(length...)
 }
 
 // ProcessId adds the operating system process ID (os.Getpid()) to Extra["pid"].

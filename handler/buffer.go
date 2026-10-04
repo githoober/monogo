@@ -17,6 +17,8 @@ type Buffer struct {
 	mu          sync.Mutex
 }
 
+var _ monogo.Resettable = (*Buffer)(nil)
+
 // NewBuffer creates a Buffer handler with optional configuration options (defaults: bubble=true).
 func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level, opts ...Option) *Buffer {
 	return &Buffer{
@@ -91,4 +93,21 @@ func (b *Buffer) Close(ctx context.Context) error {
 		err = closeErr
 	}
 	return err
+}
+
+// Reset flushes any buffered records to the wrapped handler, resets per-handler processors,
+// and resets the wrapped handler if it implements monogo.Resettable.
+func (b *Buffer) Reset() {
+	_ = b.Flush(context.Background())
+	b.BaseHandler.Reset()
+	if r, ok := b.handler.(monogo.Resettable); ok {
+		r.Reset()
+	}
+}
+
+// Clear discards all buffered records without sending them to the wrapped handler.
+func (b *Buffer) Clear() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buffer = make([]monogo.Record, 0, b.bufferLimit)
 }

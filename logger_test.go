@@ -356,3 +356,83 @@ func TestLoggerIsHandlingContext(t *testing.T) {
 	}
 }
 
+type mockResettableHandler struct {
+	mockHandler
+	resetCount int
+}
+
+func (m *mockResettableHandler) Reset() {
+	m.resetCount++
+	m.records = nil
+}
+
+type mockResettableProcessor struct {
+	resetCount int
+	tag        string
+}
+
+func (m *mockResettableProcessor) Process(r monogo.Record) monogo.Record {
+	if r.Extra == nil {
+		r.Extra = make(map[string]interface{})
+	}
+	r.Extra["tag"] = m.tag
+	return r
+}
+
+func (m *mockResettableProcessor) Reset() {
+	m.resetCount++
+	m.tag = "reset"
+}
+
+func TestLoggerReset_CascadesToHandlersAndProcessors(t *testing.T) {
+	rh1 := &mockResettableHandler{mockHandler: mockHandler{minLevel: monogo.DEBUG}}
+	rh2 := &mockResettableHandler{mockHandler: mockHandler{minLevel: monogo.DEBUG}}
+	plainH := &mockHandler{minLevel: monogo.DEBUG}
+
+	rp := &mockResettableProcessor{tag: "initial"}
+	plainP := monogo.ProcessorFunc(func(r monogo.Record) monogo.Record { return r })
+
+	logger := monogo.New("reset-test", []monogo.Handler{rh1, plainH, rh2}, []monogo.Processor{rp, plainP})
+
+	ctx := context.Background()
+	_ = logger.Info(ctx, "before reset")
+
+	if rh1.resetCount != 0 || rh2.resetCount != 0 || rp.resetCount != 0 {
+		t.Fatalf("expected 0 resets before calling Reset()")
+	}
+
+	// Call Reset on Logger
+	logger.Reset()
+
+	if rh1.resetCount != 1 {
+		t.Errorf("expected rh1 resetCount=1, got %d", rh1.resetCount)
+	}
+	if rh2.resetCount != 1 {
+		t.Errorf("expected rh2 resetCount=1, got %d", rh2.resetCount)
+	}
+	if rp.resetCount != 1 {
+		t.Errorf("expected rp resetCount=1, got %d", rp.resetCount)
+	}
+	if rp.tag != "reset" {
+		t.Errorf("expected rp.tag to be 'reset', got %s", rp.tag)
+	}
+
+	// Verify that rh1's records slice was cleared
+	if len(rh1.records) != 0 {
+		t.Errorf("expected rh1 records to be cleared after reset, got %d", len(rh1.records))
+	}
+}
+
+func TestLoggerReset_EmptyLoggerDoesNotPanic(t *testing.T) {
+	emptyLogger := monogo.New("empty", nil, nil)
+	// Should not panic
+	emptyLogger.Reset()
+}
+
+func TestLoggerImplementsResettable(t *testing.T) {
+	var _ monogo.Resettable = (*monogo.Logger)(nil)
+	l := monogo.New("test", nil, nil)
+	var r monogo.Resettable = l
+	r.Reset()
+}
+

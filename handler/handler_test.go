@@ -903,14 +903,20 @@ func TestDeduplicationHandlerReset(t *testing.T) {
 		t.Fatalf("expected 1 record, got %d", len(testH.Records()))
 	}
 
-	// Reset deduplication store
+	// Reset deduplication handler (cascades to inner testH as well)
 	dedupH.Reset()
+	if len(testH.Records()) != 0 {
+		t.Fatalf("expected 0 records after Reset(), got %d", len(testH.Records()))
+	}
 
 	// Same record at t=1s should now be handled because store was reset
 	r2 := monogo.Record{Message: "err", Level: monogo.ERROR, Time: baseTime.Add(1 * time.Second)}
 	_ = dedupH.Handle(ctx, r2)
-	if len(testH.Records()) != 2 {
-		t.Fatalf("expected 2 records after Reset(), got %d", len(testH.Records()))
+	if len(testH.Records()) != 1 {
+		t.Fatalf("expected 1 record after Reset() and second handle, got %d", len(testH.Records()))
+	}
+	if !testH.Records()[0].Time.Equal(r2.Time) {
+		t.Fatalf("expected record r2 with time %v, got %v", r2.Time, testH.Records()[0].Time)
 	}
 }
 
@@ -1436,4 +1442,229 @@ func TestWhatFailureGroupHandlersInspection(t *testing.T) {
 	if wfg.Handlers()[0] == nil {
 		t.Errorf("expected Handlers() to return defensive copy")
 	}
+}
+
+type mockResettableProc struct {
+	resetCount int
+	name       string
+}
+
+func (m *mockResettableProc) Process(r monogo.Record) monogo.Record {
+	return r
+}
+
+func (m *mockResettableProc) Reset() {
+	m.resetCount++
+}
+
+type mockPanicResetHandler struct {
+	monogo.Handler
+	resetCount int
+}
+
+func (m *mockPanicResetHandler) Reset() {
+	m.resetCount++
+	panic("handler reset exploded")
+}
+
+func TestHandlersImplementResettable(t *testing.T) {
+	var _ monogo.Resettable = (*handler.BaseHandler)(nil)
+	var _ monogo.Resettable = (*handler.Stream)(nil)
+	var _ monogo.Resettable = (*handler.Buffer)(nil)
+	var _ monogo.Resettable = (*handler.FingersCrossed)(nil)
+	var _ monogo.Resettable = (*handler.Filter)(nil)
+	var _ monogo.Resettable = (*handler.Group)(nil)
+	var _ monogo.Resettable = (*handler.WhatFailureGroup)(nil)
+	var _ monogo.Resettable = (*handler.Deduplication)(nil)
+	var _ monogo.Resettable = (*handler.Test)(nil)
+	var _ monogo.Resettable = (*handler.Null)(nil)
+}
+
+func TestBufferHandlerResetAndClear(t *testing.T) {
+	ctx := context.Background()
+	testH := handler.NewTest(monogo.DEBUG)
+	proc := &mockResettableProc{name: "p1"}
+
+	// Buffer with capacity 10, flushLevel ERROR
+	bufH := handler.NewBuffer(testH, 10, monogo.ERROR, handler.WithProcessor(proc))
+
+	// Handle 2 DEBUG records (not flushed yet)
+	_ = bufH.Handle(ctx, monogo.Record{Message: "msg1", Level: monogo.DEBUG})
+	_ = bufH.Handle(ctx, monogo.Record{Message: "msg2", Level: monogo.DEBUG})
+
+	if len(testH.Records()) != 0 {
+		t.Fatalf("expected testH to have 0 records before flush/reset, got %d", len(testH.Records()))
+	}
+
+	// Calling Reset() flushes buffered records to testH and resets testH + proc
+	// But wait: Reset() on testH clears testH's records AFTER receiving flushed records!
+	// Let's trace: bufH.Reset() -> _ = b.Flush() (testH gets msg1, msg2) -> b.BaseHandler.Reset() (proc.Reset()) -> testH.Reset() (records cleared!)
+	bufH.Reset()
+
+	if proc.resetCount != 1 {
+		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
+	}
+
+	// After Reset(), buffer is empty, and testH was also reset
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH records to be cleared by cascading Reset(), got %d", len(testH.Records()))
+	}
+
+	// Now log new message after reset; should be buffered
+	_ = bufH.Handle(ctx, monogo.Record{Message: "msg3", Level: monogo.DEBUG})
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH to have 0 records before clear/flush, got %d", len(testH.Records()))
+	}
+
+	// Test Clear() discards buffered records without sending to testH
+	bufH.Clear()
+	_ = bufH.Flush(ctx) // Flush should have nothing
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH to have 0 records after Clear(), got %d", len(testH.Records()))
+	}
+}
+
+func TestFingersCrossedResetAndClear(t *testing.T) {
+	ctx := context.Background()
+	testH := handler.NewTest(monogo.DEBUG)
+	proc := &mockResettableProc{name: "p1"}
+
+	fc := handler.NewFingersCrossed(testH, monogo.ERROR, 10, handler.WithProcessor(proc))
+
+	// Log DEBUG records
+	_ = fc.Handle(ctx, monogo.Record{Message: "debug1", Level: monogo.DEBUG})
+	_ = fc.Handle(ctx, monogo.Record{Message: "debug2", Level: monogo.DEBUG})
+
+	// Trigger activation
+	_ = fc.Handle(ctx, monogo.Record{Message: "error1", Level: monogo.ERROR})
+
+	// testH should have received 3 records
+	if len(testH.Records()) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(testH.Records()))
+	}
+
+	// Reset should disarm triggered flag, clear buffer, call proc.Reset(), and call testH.Reset()
+	fc.Reset()
+
+	if proc.resetCount != 1 {
+		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
+	}
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH records to be cleared after fc.Reset(), got %d", len(testH.Records()))
+	}
+
+	// Now log another DEBUG record; should be buffered and NOT sent to testH because fc was disarmed
+	_ = fc.Handle(ctx, monogo.Record{Message: "debug3", Level: monogo.DEBUG})
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH to have 0 records, but fc triggered flag was not reset, got %d", len(testH.Records()))
+	}
+
+	// Test Clear()
+	fc.Clear()
+	// Trigger with ERROR again
+	_ = fc.Handle(ctx, monogo.Record{Message: "error2", Level: monogo.ERROR})
+	// Only error2 should be flushed because debug3 was cleared
+	if len(testH.Records()) != 1 {
+		t.Errorf("expected 1 record after Clear() and re-trigger, got %d", len(testH.Records()))
+	}
+}
+
+func TestFilterHandlerReset(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	proc := &mockResettableProc{name: "p1"}
+	filterH := handler.NewFilter(testH, monogo.INFO, monogo.ERROR, handler.WithProcessor(proc))
+
+	ctx := context.Background()
+	_ = filterH.Handle(ctx, monogo.Record{Message: "info", Level: monogo.INFO})
+
+	if len(testH.Records()) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(testH.Records()))
+	}
+
+	filterH.Reset()
+
+	if proc.resetCount != 1 {
+		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
+	}
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH records to be cleared after filterH.Reset(), got %d", len(testH.Records()))
+	}
+}
+
+func TestGroupHandlerReset(t *testing.T) {
+	testH1 := handler.NewTest(monogo.DEBUG)
+	testH2 := handler.NewTest(monogo.DEBUG)
+	proc := &mockResettableProc{name: "p1"}
+	groupH := handler.NewGroup([]monogo.Handler{testH1, testH2}, handler.WithProcessor(proc))
+
+	ctx := context.Background()
+	_ = groupH.Handle(ctx, monogo.Record{Message: "msg", Level: monogo.INFO})
+
+	if len(testH1.Records()) != 1 || len(testH2.Records()) != 1 {
+		t.Fatalf("expected 1 record in each test handler")
+	}
+
+	groupH.Reset()
+
+	if proc.resetCount != 1 {
+		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
+	}
+	if len(testH1.Records()) != 0 || len(testH2.Records()) != 0 {
+		t.Errorf("expected both test handlers to be reset")
+	}
+}
+
+func TestWhatFailureGroupReset_PanicSuppression(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	panicH := &mockPanicResetHandler{Handler: handler.NewNull()}
+	proc := &mockResettableProc{name: "p1"}
+
+	var callbackErr error
+	var callbackHandler monogo.Handler
+	wfg := handler.NewWhatFailureGroup(
+		[]monogo.Handler{testH, panicH},
+		handler.WithProcessor(proc),
+		handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+			callbackErr = err
+			callbackHandler = h
+		}),
+	)
+
+	ctx := context.Background()
+	_ = testH.Handle(ctx, monogo.Record{Message: "rec", Level: monogo.INFO})
+
+	// Reset should NOT panic despite panicH panicking in Reset()
+	wfg.Reset()
+
+	if proc.resetCount != 1 {
+		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
+	}
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected testH to be reset")
+	}
+	if panicH.resetCount != 1 {
+		t.Errorf("expected panicH to have had Reset() called")
+	}
+	if callbackErr == nil {
+		t.Errorf("expected callbackErr to be populated with panic error")
+	}
+	if callbackHandler != panicH {
+		t.Errorf("expected callbackHandler to match panicH")
+	}
+}
+
+func TestBaseHandlerReset(t *testing.T) {
+	proc1 := &mockResettableProc{name: "p1"}
+	proc2 := &mockResettableProc{name: "p2"}
+	base := handler.NewBaseHandler(monogo.DEBUG, handler.WithProcessor(proc1, proc2))
+
+	base.Reset()
+
+	if proc1.resetCount != 1 || proc2.resetCount != 1 {
+		t.Errorf("expected both processors to be reset")
+	}
+
+	// Typed nil safety
+	var nilBase *handler.BaseHandler
+	nilBase.Reset() // should not panic
 }

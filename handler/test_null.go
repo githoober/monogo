@@ -14,6 +14,8 @@ type Test struct {
 	mu      sync.RWMutex
 }
 
+var _ monogo.Resettable = (*Test)(nil)
+
 // NewTest creates a Test handler with optional configuration options.
 func NewTest(level monogo.Level, opts ...Option) *Test {
 	return &Test{
@@ -64,8 +66,9 @@ func (t *Test) HasRecord(predicate func(monogo.Record) bool) bool {
 	return false
 }
 
-// Reset clears recorded records.
+// Reset clears recorded records and resets per-handler processors.
 func (t *Test) Reset() {
+	t.BaseHandler.Reset()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.records = make([]monogo.Record, 0)
@@ -81,6 +84,8 @@ func (t *Test) Close(ctx context.Context) error {
 type Null struct {
 	BaseHandler
 }
+
+var _ monogo.Resettable = (*Null)(nil)
 
 // NewNull creates a Null handler with optional configuration options.
 func NewNull(opts ...Option) *Null {

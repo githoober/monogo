@@ -15,6 +15,8 @@ type BaseHandler struct {
 	processors []monogo.Processor
 }
 
+var _ monogo.Resettable = (*BaseHandler)(nil)
+
 type options struct {
 	bubble              bool
 	formatter           monogo.Formatter
@@ -127,4 +129,16 @@ func (b *BaseHandler) ProcessRecord(record monogo.Record) monogo.Record {
 		record = p.Process(record)
 	}
 	return record
+}
+
+// Reset resets all per-handler processors that implement monogo.Resettable.
+func (b *BaseHandler) Reset() {
+	if b == nil {
+		return
+	}
+	for _, p := range b.processors {
+		if r, ok := p.(monogo.Resettable); ok {
+			r.Reset()
+		}
+	}
 }

@@ -13,6 +13,8 @@ type Logger struct {
 	processors []Processor
 }
 
+var _ Resettable = (*Logger)(nil)
+
 func New(name string, handlers []Handler, processors []Processor) *Logger {
 	if handlers == nil {
 		handlers = make([]Handler, 0)
@@ -202,6 +204,29 @@ func (l *Logger) Close(ctx context.Context) error {
 		}
 	}
 	return lastErr
+}
+
+// Reset resets all handlers and processors that implement Resettable.
+// This is useful in long-running processes (workers, task runners, HTTP servers)
+// between requests or jobs to reset internal buffers, deduplication caches, and processor state (such as UIDs).
+func (l *Logger) Reset() {
+	l.mu.RLock()
+	handlers := make([]Handler, len(l.handlers))
+	copy(handlers, l.handlers)
+	processors := make([]Processor, len(l.processors))
+	copy(processors, l.processors)
+	l.mu.RUnlock()
+
+	for _, h := range handlers {
+		if r, ok := h.(Resettable); ok {
+			r.Reset()
+		}
+	}
+	for _, p := range processors {
+		if r, ok := p.(Resettable); ok {
+			r.Reset()
+		}
+	}
 }
 
 func mergeContexts(ctxs ...map[string]interface{}) map[string]interface{} {

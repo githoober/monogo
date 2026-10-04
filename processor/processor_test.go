@@ -138,3 +138,70 @@ func TestEnvProcessors(t *testing.T) {
 	}
 }
 
+func TestUIDProcessor(t *testing.T) {
+	// Interface checks
+	var _ monogo.Processor = (*processor.UIDProcessor)(nil)
+	var _ monogo.Resettable = (*processor.UIDProcessor)(nil)
+
+	// Default length (16)
+	u := processor.NewUIDProcessor()
+	uid1 := u.UID()
+	if len(uid1) != 16 {
+		t.Fatalf("expected default UID length 16, got %d (%s)", len(uid1), uid1)
+	}
+
+	// Stays constant across calls
+	rec1 := u.Process(monogo.Record{Message: "m1"})
+	rec2 := u.Process(monogo.Record{Message: "m2"})
+	if rec1.Extra["uid"] != uid1 || rec2.Extra["uid"] != uid1 {
+		t.Fatalf("expected UID to remain constant across Process calls")
+	}
+
+	// Reset regenerates UID
+	u.Reset()
+	uid2 := u.UID()
+	if uid2 == uid1 {
+		t.Fatalf("expected UID to change after Reset()")
+	}
+	if len(uid2) != 16 {
+		t.Fatalf("expected UID length 16, got %d", len(uid2))
+	}
+
+	rec3 := u.Process(monogo.Record{Message: "m3"})
+	if rec3.Extra["uid"] != uid2 {
+		t.Fatalf("expected new UID after reset to be %s, got %v", uid2, rec3.Extra["uid"])
+	}
+
+	// Custom length (7 chars, matching PHP Monolog default)
+	u7 := processor.UID(7)
+	if len(u7.UID()) != 7 {
+		t.Fatalf("expected UID length 7, got %d (%s)", len(u7.UID()), u7.UID())
+	}
+
+	// Custom length (32 chars)
+	u32 := processor.NewUIDProcessor(32)
+	if len(u32.UID()) != 32 {
+		t.Fatalf("expected UID length 32, got %d (%s)", len(u32.UID()), u32.UID())
+	}
+
+	// Concurrent usage safety
+	done := make(chan bool)
+	for i := 0; i < 5; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				_ = u.Process(monogo.Record{Message: "concurrent"})
+			}
+			done <- true
+		}()
+		go func() {
+			for j := 0; j < 20; j++ {
+				u.Reset()
+			}
+			done <- true
+		}()
+	}
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+

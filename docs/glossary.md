@@ -67,4 +67,7 @@ A resilient multiplexing handler (`handler.WhatFailureGroup`) that forwards log 
 ### Logfmt Formatter
 A structured formatter (`formatter.Logfmt`) that serializes log records into standard `key=value` logfmt lines (standard for Grafana Loki, Promtail, Heroku, and Go CLI conventions). Supports configurable field keys (`WithTimeKey`, `WithLevelKey`, `WithChannelKey`, `WithMessageKey`), prefixes for context and extra maps (`WithContextPrefix`, `WithExtraPrefix`), custom timestamp layouts, and canonical quoting rules for values containing whitespace, quotes, or delimiter characters. Fully implements `monogo.BatchFormatter`.
 
+### Resettable Interface
+Defined by `monogo.Resettable` (`Reset()`). Implemented by loggers, handlers, and processors that maintain internal state across log cycles (such as buffering queues, deduplication window stores, and request UIDs). Calling `logger.Reset()` ends a log cycle and cascades down through all handlers, per-handler processors, and logger processors, restoring them to a clean state ready to receive subsequent logs without leaking data between jobs or requests. Essential for long-running Go processes (worker pools, HTTP request lifecycles, and test suites).
+
 

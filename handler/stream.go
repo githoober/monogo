@@ -17,6 +17,8 @@ type Stream struct {
 	mu     sync.Mutex
 }
 
+var _ monogo.Resettable = (*Stream)(nil)
+
 // NewStream creates a Stream handler with optional configuration options (defaults: bubble=true).
 func NewStream(w io.Writer, level monogo.Level, opts ...Option) *Stream {
 	h := &Stream{

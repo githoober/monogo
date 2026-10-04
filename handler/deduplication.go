@@ -98,6 +98,7 @@ var (
 	_ monogo.BatchHandler       = (*Deduplication)(nil)
 	_ monogo.Bubbler            = (*Deduplication)(nil)
 	_ monogo.ProcessableHandler = (*Deduplication)(nil)
+	_ monogo.Resettable         = (*Deduplication)(nil)
 )
 
 func defaultKeyFunc(r monogo.Record) string {
@@ -208,9 +209,14 @@ func (d *Deduplication) HandleBatch(ctx context.Context, records []monogo.Record
 	return lastErr
 }
 
-// Reset clears the deduplication store.
+// Reset clears the deduplication store, resets per-handler processors, and resets
+// the wrapped handler if it implements monogo.Resettable.
 func (d *Deduplication) Reset() {
+	d.BaseHandler.Reset()
 	d.store.Reset()
+	if r, ok := d.handler.(monogo.Resettable); ok {
+		r.Reset()
+	}
 }
 
 // Close closes the wrapped handler.

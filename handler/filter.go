@@ -15,6 +15,8 @@ type Filter struct {
 	predicate func(monogo.Record) bool
 }
 
+var _ monogo.Resettable = (*Filter)(nil)
+
 // NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional configuration options.
 func NewFilter(handler monogo.Handler, minLevel, maxLevel monogo.Level, opts ...Option) *Filter {
 	return &Filter{
@@ -96,4 +98,12 @@ func (f *Filter) HandleBatch(ctx context.Context, records []monogo.Record) error
 // Close closes wrapped handler.
 func (f *Filter) Close(ctx context.Context) error {
 	return f.handler.Close(ctx)
+}
+
+// Reset resets per-handler processors and resets the wrapped handler if it implements monogo.Resettable.
+func (f *Filter) Reset() {
+	f.BaseHandler.Reset()
+	if r, ok := f.handler.(monogo.Resettable); ok {
+		r.Reset()
+	}
 }
