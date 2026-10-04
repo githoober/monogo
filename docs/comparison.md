@@ -21,7 +21,7 @@ Monogo preserves the core architecture, data model, and processing pipeline of P
 | **Handler Pipeline** | LIFO stack evaluation | Slice evaluation (`[]monogo.Handler`) | Log records flow sequentially through configured handlers. |
 | **Bubbling Control** | `$bubble = false` on `AbstractProcessingHandler` | `monogo.Bubbler` interface & `handler.WithBubble(bool)` | Prevents record propagation down the handler stack when a handler consumes the record. |
 | **Per-Handler Processors** | `ProcessableHandlerInterface` / `pushProcessor` | `monogo.ProcessableHandler` & `handler.WithProcessor(...)` | Allows individual handlers to attach dedicated processors. |
-| **Batch Processing** | `HandlerInterface::handleBatch` / `formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Flushes buffered records in bulk operations. |
+| **Batch Processing** | `HandlerInterface::handleBatch` & `FormatterInterface::formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Directly ported from Monolog's batch contracts. In PHP Monolog, `handleBatch` is mandatory on `HandlerInterface` and `formatBatch` on `FormatterInterface` (relying on base class `foreach` loops). Monogo adapts this using Go's Interface Segregation Principle (`BatchHandler` / `BatchFormatter` are optional interfaces checked via type assertion, falling back automatically to single-record `Handle` loops). |
 
 ---
 
@@ -109,13 +109,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
   - PHP Monolog's `DeduplicationHandler` wrote state to local disk files because PHP processes die at the end of each HTTP request.
   - Monogo's `Deduplication` handler uses a high-performance in-memory cache with zero-goroutine lazy auto-pruning. It avoids disk I/O, prevents memory leaks in 24/7 services, and supports pluggable custom store backends (`DeduplicationStore`).
 
-### 7. Optional Segregated Batch Contracts
-- **Status:** **New in Monogo** *(Interface segregation)*.
-- **What it does:**
-  - Rather than forcing all handlers to implement dummy loops for batch handling, Monogo segregates single-record handling (`Handler`) from bulk handling (`BatchHandler`).
-  - Buffering handlers (`Buffer`, `FingersCrossed`) check for `BatchHandler` via type assertion, executing atomic bulk writes when supported, and falling back gracefully to single-record `Handle` loops when not.
-
-### 8. Batch JSON Formatting Modes
+### 7. Batch JSON Formatting Modes
 - **Status:** **New in Monogo**.
 - **What it does:**
   - `formatter.JSON` supports two batch formatting modes via `WithBatchMode`:
