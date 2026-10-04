@@ -1,16 +1,16 @@
-# Monogo vs. PHP Monolog: Lineage, Parity & Go Innovations
+# Monogo vs. PHP Monolog: Lineage, Adapted Counterparts & Go Innovations
 
-This document details the provenance of features in **Monogo** (`github.com/githoober/monogo`), providing an explicit, transparent accounting of:
-1. **What came directly from PHP Monolog core** (`Seldaek/monolog`).
+This document details the provenance and design of **Monogo** (`github.com/githoober/monogo`), providing an explicit, transparent accounting of:
+1. **Handlers, formatters, and concepts modeled after PHP Monolog core** (`Seldaek/monolog`).
 2. **What is new in Monogo** (idiomatic Go innovations, cloud-native adaptations, and extensions).
 3. **What is deliberately omitted** from Monolog (and why).
 4. **How Monogo compares against other popular Go logging frameworks** (`log/slog`, `logrus`, `zap`, `zerolog`).
 
 ---
 
-## 1. What Came Directly from PHP Monolog (Upstream Parity)
+## 1. Components Modeled After PHP Monolog Core
 
-Monogo preserves the core architecture, data model, and processing pipeline of PHP Monolog (`Seldaek/monolog`), adapting them to idiomatic Go:
+Monogo preserves the core architecture, data model, and processing pipeline of PHP Monolog (`Seldaek/monolog`), implementing adapted Go counterparts for its primary components:
 
 ### Core Architecture & Concepts
 | Feature / Concept | PHP Monolog Implementation | Monogo Implementation | Details |
@@ -21,47 +21,47 @@ Monogo preserves the core architecture, data model, and processing pipeline of P
 | **Handler Pipeline** | LIFO stack evaluation | Slice evaluation (`[]monogo.Handler`) | Log records flow sequentially through configured handlers. |
 | **Bubbling Control** | `$bubble = false` on `AbstractProcessingHandler` | `monogo.Bubbler` interface & `handler.WithBubble(bool)` | Prevents record propagation down the handler stack when a handler consumes the record. |
 | **Per-Handler Processors** | `ProcessableHandlerInterface` / `pushProcessor` | `monogo.ProcessableHandler` & `handler.WithProcessor(...)` | Allows individual handlers to attach dedicated processors. |
-| **Batch Processing** | `HandlerInterface::handleBatch` & `FormatterInterface::formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Directly ported from Monolog's batch contracts. In PHP Monolog, `handleBatch` is mandatory on `HandlerInterface` and `formatBatch` on `FormatterInterface` (relying on base class `foreach` loops). Monogo adapts this using Go's Interface Segregation Principle (`BatchHandler` / `BatchFormatter` are optional interfaces checked via type assertion, falling back automatically to single-record `Handle` loops). |
+| **Batch Processing** | `HandlerInterface::handleBatch` & `FormatterInterface::formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Modeled after Monolog's batch contracts. In PHP Monolog, `handleBatch` is mandatory on `HandlerInterface` and `formatBatch` on `FormatterInterface` (relying on base class `foreach` loops). Monogo adapts this using Go's Interface Segregation Principle (`BatchHandler` / `BatchFormatter` are optional interfaces checked via type assertion, falling back automatically to single-record `Handle` loops). |
 
 ---
 
-### Handlers Ported from Core Monolog (`Monolog\Handler\*`)
-Every handler below corresponds 1:1 to an upstream PHP Monolog core handler:
+### Handlers Modeled After Core Monolog (`Monolog\Handler\*`)
+The handlers below are adapted counterparts modeled after upstream PHP Monolog core classes, tailored to Go's runtime and ecosystem:
 
-| Monogo Handler | PHP Monolog Class | Purpose & Parity Details |
+| Monogo Handler | PHP Monolog Class | Purpose & Adaptation Details |
 | :--- | :--- | :--- |
 | [`handler.Stream`](../handler/stream.go) | `Monolog\Handler\StreamHandler` | Writes formatted records to any `io.Writer` (console `os.Stdout`/`os.Stderr`, files, network sockets). |
-| [`handler.RotatingFile`](../handler/rotating_file.go) | `Monolog\Handler\RotatingFileHandler` | Rotates log files based on file size, retention count, and age (powered by `lumberjack.v2`). |
-| [`handler.Buffer`](../handler/buffer.go) | `Monolog\Handler\BufferHandler` | Buffers records in memory until a capacity limit is reached or a trigger level (e.g. `ERROR`) is reached, flushing all buffered records. |
-| [`handler.FingersCrossed`](../handler/fingers_crossed.go) | `Monolog\Handler\FingersCrossedHandler` | Buffers low-severity diagnostic records (`DEBUG`, `INFO`) silently until an action level (e.g. `ERROR`) is encountered, then flushes full history. |
-| [`handler.Filter`](../handler/filter.go) | `Monolog\Handler\FilterHandler` | Passes records only if their level falls within an inclusive min/max level range; drops out-of-range records. |
-| [`handler.Group`](../handler/group.go) | `Monolog\Handler\GroupHandler` | Multiplexes log records to a slice of nested child handlers. |
-| [`handler.Null`](../handler/test_null.go) | `Monolog\Handler\NullHandler` | Consumes and discards all log records without action (useful for muting logs in tests or specific channels). |
-| [`handler.Test`](../handler/test_null.go) | `Monolog\Handler\TestHandler` | Retains records in memory for assertions during unit and integration testing. |
-| [`handler.Deduplication`](../handler/deduplication.go) | `Monolog\Handler\DeduplicationHandler` | Suppresses duplicate records that recur within a sliding time window (default 60s) to protect alert sinks from flood exhaustion. |
-| [`handler.WhatFailureGroup`](../handler/what_failure_group.go) | `Monolog\Handler\WhatFailureGroupHandler` | Multiplexes records to child handlers while safely swallowing and suppressing all errors and panics, ensuring non-critical sinks (webhooks, Elasticsearch) cannot fail the application. |
+| [`handler.RotatingFile`](../handler/rotating_file.go) | `Monolog\Handler\RotatingFileHandler` | Adapted counterpart to `RotatingFileHandler`. Whereas Monolog rotates on calendar dates (one file per day), Monogo adapts rotation for long-running Go services by rotating on file size, max age, and backup retention using `lumberjack.v2`. |
+| [`handler.Buffer`](../handler/buffer.go) | `Monolog\Handler\BufferHandler` | Adapted counterpart to `BufferHandler`. Buffers records and flushes on capacity limit, action level, or `Close` (adapting Monolog's request-lifecycle buffering for long-running Go services). |
+| [`handler.FingersCrossed`](../handler/fingers_crossed.go) | `Monolog\Handler\FingersCrossedHandler` | Adapted counterpart to `FingersCrossedHandler`. Buffers low-severity diagnostic records (`DEBUG`, `INFO`) silently until an action level (e.g. `ERROR`) is encountered, then flushes full history. |
+| [`handler.Filter`](../handler/filter.go) | `Monolog\Handler\FilterHandler` | Adapted counterpart to `FilterHandler`. Passes records only if their level falls within an inclusive min/max level range; drops out-of-range records. |
+| [`handler.Group`](../handler/group.go) | `Monolog\Handler\GroupHandler` | Adapted counterpart to `GroupHandler`. Multiplexes log records to a slice of nested child handlers. |
+| [`handler.Null`](../handler/test_null.go) | `Monolog\Handler\NullHandler` | Adapted counterpart to `NullHandler`. Consumes and discards all log records without action (useful for muting logs in tests or specific channels). |
+| [`handler.Test`](../handler/test_null.go) | `Monolog\Handler\TestHandler` | Adapted counterpart to `TestHandler`. Retains records in memory for assertions during unit and integration testing. |
+| [`handler.Deduplication`](../handler/deduplication.go) | `Monolog\Handler\DeduplicationHandler` | Adapted counterpart to `DeduplicationHandler`. Provides sliding time-window duplicate suppression, adapted to use a thread-safe in-memory cache with auto-pruning rather than Monolog's file-based store. |
+| [`handler.WhatFailureGroup`](../handler/what_failure_group.go) | `Monolog\Handler\WhatFailureGroupHandler` | Adapted counterpart to `WhatFailureGroupHandler`. Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics (analogous to catching `Throwable` in PHP). |
 
 ---
 
-### Formatters Ported from Core Monolog (`Monolog\Formatter\*`)
+### Formatters Modeled After Core Monolog (`Monolog\Formatter\*`)
 
-| Monogo Formatter | PHP Monolog Class | Purpose & Parity Details |
+| Monogo Formatter | PHP Monolog Class | Purpose & Adaptation Details |
 | :--- | :--- | :--- |
 | [`formatter.Line`](../formatter/line.go) | `Monolog\Formatter\LineFormatter` | Formats records into customizable text lines with timestamp, channel, level, message, and serialized context/extra. |
 | [`formatter.JSON`](../formatter/json.go) | `Monolog\Formatter\JsonFormatter` | Formats records into structured JSON payloads suitable for log shippers and ingestion systems. |
 
 ---
 
-### Processors Ported from Core Monolog (`Monolog\Processor\*`)
+### Processors Modeled After Core Monolog (`Monolog\Processor\*`)
 
-| Monogo Processor | PHP Monolog Class | Purpose & Parity Details |
+| Monogo Processor | PHP Monolog Class | Purpose & Adaptation Details |
 | :--- | :--- | :--- |
-| [`processor.Caller`](../processor/processor.go) | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site and adds to `Extra["caller"]`. |
-| [`processor.Hostname`](../processor/processor.go) | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]`. |
-| [`processor.Memory`](../processor/processor.go) | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]`. |
+| [`processor.Caller`](../processor/processor.go) | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site using Go's `runtime.Caller` instead of PHP's `debug_backtrace()`. |
+| [`processor.Hostname`](../processor/processor.go) | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]` via `os.Hostname()`. |
+| [`processor.Memory`](../processor/processor.go) | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes` from `runtime.MemStats`) instead of PHP's `memory_get_usage()`. |
 | [`processor.UID`](../processor/processor.go) | `Monolog\Processor\UidProcessor` | Injects a random unique identifier string into `Extra["uid"]` to trace operations. |
 | [`processor.ProcessId`](../processor/processor.go) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. |
-| [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (via Go `runtime/debug.ReadBuildInfo` and environment discovery). |
+| [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables instead of git CLI execution. |
 | [`processor.Tag`](../processor/processor.go) | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |
 
 ---

@@ -400,7 +400,7 @@ logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "post
 
 ## Documentation
 
-- [**Lineage, Parity & Go Innovations**](docs/comparison.md): Exhaustive breakdown of what was directly ported from PHP Monolog core, what is new in Monogo (Go idioms and cloud extensions), and comparative analysis against popular Go loggers.
+- [**Lineage, Adapted Counterparts & Go Innovations**](docs/comparison.md): Exhaustive breakdown of handlers, formatters, and concepts modeled after PHP Monolog core, what is new in Monogo (Go idioms and cloud extensions), and comparative analysis against popular Go loggers.
 - [**Architecture & Design Decisions**](docs/architecture.md): Deep dive into core design choices, pluggable backend adapters (`log/slog`, `zerolog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
 - [**Deliberately Unimplemented Features**](docs/deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
 - [**Glossary & Concepts**](docs/glossary.md): Terminology and concepts including Channels, Handlers, Processors, Formatters, Bubbling, and Batching.
