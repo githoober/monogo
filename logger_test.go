@@ -305,12 +305,16 @@ type contextAwareHandler struct {
 	handledRecords []monogo.Record
 }
 
+type loggerTestContextKey string
+
+const debugModeKey loggerTestContextKey = "debug_mode"
+
 func (c *contextAwareHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
 	if level >= monogo.INFO {
 		return true
 	}
-	// Dynamically allow DEBUG only if context has "debug_mode" == true
-	if val, ok := ctx.Value("debug_mode").(bool); ok && val {
+	// Dynamically allow DEBUG only if context has debugModeKey == true
+	if val, ok := ctx.Value(debugModeKey).(bool); ok && val {
 		return true
 	}
 	return false
@@ -330,7 +334,7 @@ func TestLoggerIsHandlingContext(t *testing.T) {
 	logger := monogo.New("ctx-handling-test", []monogo.Handler{h}, nil)
 
 	ctxOff := context.Background()
-	ctxOn := context.WithValue(context.Background(), "debug_mode", true)
+	ctxOn := context.WithValue(context.Background(), debugModeKey, true)
 
 	// Test IsHandling directly
 	if logger.IsHandling(ctxOff, monogo.DEBUG) {

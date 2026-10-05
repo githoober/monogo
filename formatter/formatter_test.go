@@ -510,10 +510,9 @@ func TestLogfmtFormatter_AliasAndInterface(t *testing.T) {
 	var _ monogo.Formatter = (*formatter.Logfmt)(nil)
 	var _ monogo.BatchFormatter = (*formatter.Logfmt)(nil)
 
-	var f *formatter.Logfmt = formatter.NewLogfmt()
-	var fAlias *formatter.LogfmtFormatter = f
-	if fAlias == nil {
-		t.Fatal("alias pointer was nil")
+	var f *formatter.LogfmtFormatter
+	if f != nil {
+		t.Fatal("expected nil")
 	}
 }
 

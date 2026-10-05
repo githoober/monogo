@@ -286,12 +286,19 @@ func TestSlogHandlerContextForwarding(t *testing.T) {
 	}
 }
 
+type slogTestContextKey string
+
+const (
+	slogEnableKey   slogTestContextKey = "slog_enable"
+	bridgeEnableKey slogTestContextKey = "bridge_enable"
+)
+
 type conditionalSlogHandler struct {
 	captureSlogHandler
 }
 
 func (cs *conditionalSlogHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	if val, ok := ctx.Value("slog_enable").(bool); ok && val {
+	if val, ok := ctx.Value(slogEnableKey).(bool); ok && val {
 		return true
 	}
 	return false
@@ -302,7 +309,7 @@ func TestSlogHandlerIsHandlingWithContext(t *testing.T) {
 	sh := slogadapter.NewSlogHandler(cond, monogo.DEBUG)
 
 	ctxOff := context.Background()
-	ctxOn := context.WithValue(context.Background(), "slog_enable", true)
+	ctxOn := context.WithValue(context.Background(), slogEnableKey, true)
 
 	if sh.IsHandling(ctxOff, monogo.INFO) {
 		t.Errorf("expected SlogHandler.IsHandling to return false when context disables it")
@@ -318,7 +325,7 @@ type ctxAwareMockHandler struct {
 
 func (c *ctxAwareMockHandler) IsHandling(ctx context.Context, level monogo.Level) bool {
 	c.lastCtx = ctx
-	val, ok := ctx.Value("bridge_enable").(bool)
+	val, ok := ctx.Value(bridgeEnableKey).(bool)
 	return ok && val
 }
 
@@ -336,7 +343,7 @@ func TestMonogoSlogBridgeEnabledContext(t *testing.T) {
 	bridge := slogadapter.NewMonogoSlogBridge(logger)
 
 	ctxOff := context.Background()
-	ctxOn := context.WithValue(context.Background(), "bridge_enable", true)
+	ctxOn := context.WithValue(context.Background(), bridgeEnableKey, true)
 
 	if bridge.Enabled(ctxOff, slog.LevelInfo) {
 		t.Errorf("expected bridge.Enabled to be false when context disables it")
@@ -344,7 +351,7 @@ func TestMonogoSlogBridgeEnabledContext(t *testing.T) {
 	if !bridge.Enabled(ctxOn, slog.LevelInfo) {
 		t.Errorf("expected bridge.Enabled to be true when context enables it")
 	}
-	if handler.lastCtx == nil || handler.lastCtx.Value("bridge_enable") != true {
+	if handler.lastCtx == nil || handler.lastCtx.Value(bridgeEnableKey) != true {
 		t.Errorf("expected handler to receive the context passed to bridge.Enabled")
 	}
 }

@@ -82,7 +82,7 @@ func TestRotatingFileHandler(t *testing.T) {
 		handler.WithMaxBackups(2),
 		handler.WithMaxAge(7),
 	)
-	defer rotH.Close(context.Background())
+	defer func() { _ = rotH.Close(context.Background()) }()
 
 	if !rotH.Bubble() {
 		t.Errorf("expected default Bubble to be true")
@@ -116,7 +116,7 @@ func TestRotatingFileHandlerBubbling(t *testing.T) {
 			MaxBackups: 2,
 		}),
 	)
-	defer rotH.Close(context.Background())
+	defer func() { _ = rotH.Close(context.Background()) }()
 
 	if rotH.Bubble() {
 		t.Errorf("expected Bubble to be false with WithBubble(false)")
@@ -154,9 +154,9 @@ func TestFilterHandler(t *testing.T) {
 	testH := handler.NewTest(monogo.DEBUG)
 	filterH := handler.NewFilter(testH, monogo.INFO, monogo.ERROR)
 
-	filterH.Handle(context.Background(), monogo.Record{Message: "debug", Level: monogo.DEBUG})
-	filterH.Handle(context.Background(), monogo.Record{Message: "info", Level: monogo.INFO})
-	filterH.Handle(context.Background(), monogo.Record{Message: "crit", Level: monogo.CRITICAL})
+	_ = filterH.Handle(context.Background(), monogo.Record{Message: "debug", Level: monogo.DEBUG})
+	_ = filterH.Handle(context.Background(), monogo.Record{Message: "info", Level: monogo.INFO})
+	_ = filterH.Handle(context.Background(), monogo.Record{Message: "crit", Level: monogo.CRITICAL})
 
 	recs := testH.Records()
 	if len(recs) != 1 || recs[0].Message != "info" {
@@ -169,8 +169,8 @@ func TestGroupHandler(t *testing.T) {
 	t2 := handler.NewTest(monogo.WARNING)
 	group := handler.NewGroup([]monogo.Handler{t1, t2})
 
-	group.Handle(context.Background(), monogo.Record{Message: "info msg", Level: monogo.INFO})
-	group.Handle(context.Background(), monogo.Record{Message: "warn msg", Level: monogo.WARNING})
+	_ = group.Handle(context.Background(), monogo.Record{Message: "info msg", Level: monogo.INFO})
+	_ = group.Handle(context.Background(), monogo.Record{Message: "warn msg", Level: monogo.WARNING})
 
 	if len(t1.Records()) != 2 {
 		t.Errorf("t1 should have 2 records, got %d", len(t1.Records()))
@@ -184,14 +184,14 @@ func TestBufferHandler(t *testing.T) {
 	testH := handler.NewTest(monogo.DEBUG)
 	bufH := handler.NewBuffer(testH, 3, monogo.ERROR)
 
-	bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.INFO})
-	bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 1", Level: monogo.INFO})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 2", Level: monogo.INFO})
 
 	if len(testH.Records()) != 0 {
 		t.Errorf("buffer should not have flushed yet")
 	}
 
-	bufH.Handle(context.Background(), monogo.Record{Message: "msg 3 error", Level: monogo.ERROR})
+	_ = bufH.Handle(context.Background(), monogo.Record{Message: "msg 3 error", Level: monogo.ERROR})
 	if len(testH.Records()) != 3 {
 		t.Errorf("buffer should have flushed 3 records, got %d", len(testH.Records()))
 	}
@@ -204,7 +204,7 @@ func TestNullAndTestHandler(t *testing.T) {
 	}
 
 	testH := handler.NewTest(monogo.DEBUG)
-	testH.Handle(context.Background(), monogo.Record{Message: "find me", Level: monogo.INFO})
+	_ = testH.Handle(context.Background(), monogo.Record{Message: "find me", Level: monogo.INFO})
 
 	found := testH.HasRecord(func(r monogo.Record) bool {
 		return r.Message == "find me"
