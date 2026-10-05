@@ -58,7 +58,7 @@ go tool cover -func=coverage.out
 #### Running Deadcode Analysis Locally
 
 ```bash
-go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
 ```
 
 ---
@@ -70,7 +70,7 @@ go run golang.org/x/tools/cmd/deadcode@latest -test ./...
 - **Enabled Linters:**
   - **`staticcheck`**: Deep static analysis for Go bugs, deprecated usages, and typed context keys (e.g. SA1029).
   - **`errcheck`**: Ensures returned errors are explicitly handled or documented.
-  - **`govet`**: Standard Go vet passes including copy locks, printf formats, and shadow checks.
+  - **`govet`**: Standard Go vet passes including copy locks, atomic operations, and printf formats.
   - **`ineffassign`**: Detects unused variable assignments.
   - **`unused`**: Checks for unused constants, variables, functions, and types.
 

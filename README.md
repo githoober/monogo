@@ -518,7 +518,7 @@ go tool cover -func=coverage.out
 ### Deadcode Analysis
 Verify zero dead or unreachable code using Go's official reachability analyzer:
 ```bash
-go run golang.org/x/tools/cmd/deadcode@latest -test ./...
+go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
 ```
 
 ### Linting (`golangci-lint` v2.14)
