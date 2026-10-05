@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -152,9 +153,34 @@ func (u *UIDProcessor) Process(r monogo.Record) monogo.Record {
 }
 
 var (
+	randReader         io.Reader = rand.Reader
 	uidFallbackMu      sync.Mutex
 	uidFallbackCounter uint64
 )
+
+func fallbackUID(length int) string {
+	uidFallbackMu.Lock()
+	uidFallbackCounter++
+	cnt := uidFallbackCounter
+	uidFallbackMu.Unlock()
+
+	timeHex := fmt.Sprintf("%016x", time.Now().UnixNano())
+	cntHex := fmt.Sprintf("%016x", cnt)
+
+	if length <= 32 {
+		// Retain the low-order counter portion so it contributes to all supported truncated identifiers (1..32),
+		// ensuring uniqueness even if multiple calls occur within the same nanosecond clock tick.
+		cntLen := (length + 1) / 2
+		timeLen := length - cntLen
+		return timeHex[len(timeHex)-timeLen:] + cntHex[len(cntHex)-cntLen:]
+	}
+
+	h := timeHex + cntHex
+	for len(h) < length {
+		h += "0"
+	}
+	return h[:length]
+}
 
 func generateUID(length int) string {
 	if length < MinUIDLength || length > MaxUIDLength {
@@ -162,22 +188,8 @@ func generateUID(length int) string {
 	}
 	bytesLen := (length + 1) / 2
 	b := make([]byte, bytesLen)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback to high-resolution timestamp + monotonic counter to guarantee uniqueness
-		// even if the system cryptographic entropy source fails.
-		uidFallbackMu.Lock()
-		uidFallbackCounter++
-		cnt := uidFallbackCounter
-		uidFallbackMu.Unlock()
-
-		h := fmt.Sprintf("%016x%016x", time.Now().UnixNano(), cnt)
-		if len(h) > length {
-			return h[:length]
-		}
-		for len(h) < length {
-			h += "0"
-		}
-		return h
+	if _, err := randReader.Read(b); err != nil {
+		return fallbackUID(length)
 	}
 
 	h := hex.EncodeToString(b)

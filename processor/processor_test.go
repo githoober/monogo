@@ -2,6 +2,7 @@ package processor_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -236,4 +237,36 @@ func TestUIDProcessor(t *testing.T) {
 		<-done
 	}
 }
+
+type failingReader struct{}
+
+func (f *failingReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("entropy failure")
+}
+
+func TestUIDProcessor_FallbackEntropyFailure(t *testing.T) {
+	restore := processor.SetRandReaderForTest(&failingReader{})
+	defer restore()
+
+	lengths := []int{1, 2, 7, 16, 32, 64}
+	for _, l := range lengths {
+		u := processor.NewUIDProcessor(l)
+		uid1 := u.UID()
+		if len(uid1) != l {
+			t.Fatalf("expected fallback UID length %d, got %d (%s)", l, len(uid1), uid1)
+		}
+		// Reset immediately (same clock tick possible)
+		if err := u.Reset(context.Background()); err != nil {
+			t.Fatalf("unexpected reset error: %v", err)
+		}
+		uid2 := u.UID()
+		if len(uid2) != l {
+			t.Fatalf("expected fallback UID length %d after reset, got %d (%s)", l, len(uid2), uid2)
+		}
+		if uid1 == uid2 {
+			t.Fatalf("expected fallback UIDs of length %d to be unique across calls, but got identical: %s", l, uid1)
+		}
+	}
+}
+
 

@@ -8,13 +8,28 @@ import (
 
 type Logger struct {
 	mu         sync.RWMutex
-	cycleMu    sync.RWMutex
+	cycleMu    *sync.RWMutex
 	name       string
 	handlers   []Handler
 	processors []Processor
 }
 
 var _ Resettable = (*Logger)(nil)
+
+func (l *Logger) getCycleMu() *sync.RWMutex {
+	l.mu.RLock()
+	m := l.cycleMu
+	l.mu.RUnlock()
+	if m != nil {
+		return m
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.cycleMu == nil {
+		l.cycleMu = new(sync.RWMutex)
+	}
+	return l.cycleMu
+}
 
 func New(name string, handlers []Handler, processors []Processor) *Logger {
 	if handlers == nil {
@@ -24,6 +39,7 @@ func New(name string, handlers []Handler, processors []Processor) *Logger {
 		processors = make([]Processor, 0)
 	}
 	return &Logger{
+		cycleMu:    new(sync.RWMutex),
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -81,9 +97,15 @@ func (l *Logger) With(ctxMap map[string]interface{}) *Logger {
 	processors[0] = processor
 	copy(processors[1:], l.processors)
 	name := l.name
+	cycleMu := l.cycleMu
 	l.mu.RUnlock()
 
+	if cycleMu == nil {
+		cycleMu = l.getCycleMu()
+	}
+
 	return &Logger{
+		cycleMu:    cycleMu,
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -92,15 +114,21 @@ func (l *Logger) With(ctxMap map[string]interface{}) *Logger {
 
 func (l *Logger) WithName(name string) *Logger {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	handlers := make([]Handler, len(l.handlers))
 	copy(handlers, l.handlers)
 
 	processors := make([]Processor, len(l.processors))
 	copy(processors, l.processors)
 
+	cycleMu := l.cycleMu
+	l.mu.RUnlock()
+
+	if cycleMu == nil {
+		cycleMu = l.getCycleMu()
+	}
+
 	return &Logger{
+		cycleMu:    cycleMu,
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -127,8 +155,9 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 		return nil
 	}
 
-	l.cycleMu.RLock()
-	defer l.cycleMu.RUnlock()
+	cycleMu := l.getCycleMu()
+	cycleMu.RLock()
+	defer cycleMu.RUnlock()
 
 	mergedCtx := mergeContexts(FromContext(ctx), mergeContexts(ctxMap...))
 
@@ -199,8 +228,9 @@ func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string
 }
 
 func (l *Logger) Close(ctx context.Context) error {
-	l.cycleMu.Lock()
-	defer l.cycleMu.Unlock()
+	cycleMu := l.getCycleMu()
+	cycleMu.Lock()
+	defer cycleMu.Unlock()
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -218,8 +248,9 @@ func (l *Logger) Close(ctx context.Context) error {
 // and incoming Log calls wait until Reset completes, preventing records from leaking across cycles.
 // Returns the last error encountered during reset, if any.
 func (l *Logger) Reset(ctx context.Context) error {
-	l.cycleMu.Lock()
-	defer l.cycleMu.Unlock()
+	cycleMu := l.getCycleMu()
+	cycleMu.Lock()
+	defer cycleMu.Unlock()
 
 	l.mu.RLock()
 	handlers := make([]Handler, len(l.handlers))

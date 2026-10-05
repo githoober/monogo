@@ -569,3 +569,62 @@ func TestLoggerReset_PropagatesError(t *testing.T) {
 	}
 }
 
+func TestLoggerReset_LifecycleBarrier_DerivedLoggers(t *testing.T) {
+	h := &blockingResettableHandler{
+		handleBlock: make(chan struct{}),
+		handleStart: make(chan struct{}, 1),
+	}
+
+	parent := monogo.New("parent", []monogo.Handler{h}, nil)
+	child := parent.With(map[string]interface{}{"request_id": 42}).WithChannel("child-worker")
+	ctx := context.Background()
+
+	// Launch in-flight Log call on child logger
+	logDone := make(chan error, 1)
+	go func() {
+		logDone <- child.Info(ctx, "in-flight child log")
+	}()
+
+	// Wait until child's Handle has started executing
+	<-h.handleStart
+
+	// Launch Reset on parent logger in separate goroutine; it should block because child shares cycleMu
+	resetDone := make(chan struct{})
+	go func() {
+		_ = parent.Reset(ctx)
+		close(resetDone)
+	}()
+
+	// Ensure parent.Reset has not completed yet
+	select {
+	case <-resetDone:
+		t.Fatalf("parent.Reset() should be blocked by in-flight child Log()")
+	case <-time.After(30 * time.Millisecond):
+		// Expected: parent.Reset is waiting on shared cycleMu
+	}
+
+	// Release in-flight child Log
+	close(h.handleBlock)
+
+	if err := <-logDone; err != nil {
+		t.Fatalf("child Log returned error: %v", err)
+	}
+
+	// parent.Reset should now complete
+	select {
+	case <-resetDone:
+		// Succeeded
+	case <-time.After(1 * time.Second):
+		t.Fatalf("parent.Reset() timed out waiting for shared cycleMu")
+	}
+
+	// Records should have been cleared by parent.Reset()
+	h.mu.Lock()
+	recordCount := len(h.records)
+	h.mu.Unlock()
+
+	if recordCount != 0 {
+		t.Errorf("expected 0 records after child log completed and parent Reset ran, got %d", recordCount)
+	}
+}
+
