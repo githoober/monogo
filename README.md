@@ -502,11 +502,33 @@ logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "post
 - [**Architecture & Design Decisions**](docs/architecture.md): Deep dive into core design choices, pluggable backend adapters (`log/slog`, `zerolog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
 - [**Deliberately Unimplemented Features**](docs/deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
 - [**Glossary & Concepts**](docs/glossary.md): Terminology and concepts including Channels, Handlers, Processors, Formatters, Bubbling, and Batching.
+- [**Continuous Integration & Quality Assurance**](docs/ci.md): Details the GitHub Actions CI pipeline, test coverage, deadcode reachability checks, and `golangci-lint` static analysis.
 
-## Testing
+## Testing & Continuous Integration
 
-Run all unit tests across all packages:
+Monogo enforces strict quality standards via automated GitHub Actions CI and local tooling:
 
+### Unit Tests, Coverage & Race Detection
+Run tests across all packages with coverage profiling and race detection:
 ```bash
-go test -v ./...
+go test -v -race -count=1 -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
 ```
+
+### Deadcode Analysis
+Verify zero dead or unreachable code using Go's official reachability analyzer:
+```bash
+go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
+```
+
+### Linting (`golangci-lint` v2.14)
+Run static analysis configured in `.golangci.yml` (enforces `staticcheck`, `errcheck`, `govet`, `ineffassign`, `unused`):
+```bash
+golangci-lint run
+```
+
+### GitHub Actions CI
+The CI workflow defined in `.github/workflows/ci.yml` runs on every push and pull request to `main`, validating:
+- **Test:** `go mod verify`, `go vet`, and tests with coverage
+- **Deadcode:** call graph reachability analysis with zero allowable dead code
+- **GolangCI-Lint:** automated multi-linter verification via `golangci-lint-action`
