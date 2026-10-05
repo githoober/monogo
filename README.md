@@ -508,10 +508,10 @@ logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "post
 
 Monogo enforces strict quality standards via automated GitHub Actions CI and local tooling:
 
-### Unit Tests & Coverage
-Run tests across all packages with coverage profiling:
+### Unit Tests, Coverage & Race Detection
+Run tests across all packages with coverage profiling and race detection:
 ```bash
-go test -v -count=1 -coverprofile=coverage.out ./...
+go test -v -race -count=1 -coverprofile=coverage.out ./...
 go tool cover -func=coverage.out
 ```
 

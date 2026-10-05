@@ -31,17 +31,17 @@ flowchart LR
 - **Steps:**
   1. **Dependency Verification:** Runs `go mod verify` to guarantee module cache and `go.sum` integrity.
   2. **Go Vet:** Runs `go vet ./...` to detect suspicious constructs.
-  3. **Unit Tests & Coverage:** Runs `go test -v -count=1 -coverprofile=coverage.out ./...` to verify package logic without test caching.
+  3. **Unit Tests, Coverage & Race Detection:** Runs `go test -v -race -count=1 -coverprofile=coverage.out ./...` to verify package logic and catch data races without test caching.
   4. **Coverage Summary:** Generates function-level coverage metrics via `go tool cover -func=coverage.out`.
 
 #### Running Tests Locally
 
 ```bash
-# Run all tests with race detector and count=1
-go test -v -count=1 ./...
+# Run all tests with race detector and count=1 (requires CGO/C compiler)
+go test -v -race -count=1 ./...
 
-# Run tests with coverage profiling
-go test -v -count=1 -coverprofile=coverage.out ./...
+# Run tests with coverage profiling and race detector
+go test -v -race -count=1 -coverprofile=coverage.out ./...
 go tool cover -func=coverage.out
 ```
 
