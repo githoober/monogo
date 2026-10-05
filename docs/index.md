@@ -8,6 +8,7 @@ Welcome to the documentation for **Monogo** (`github.com/githoober/monogo`), a f
 - [**Lineage, Adapted Counterparts & Go Innovations**](comparison.md): Exhaustive breakdown of handlers, formatters, and concepts modeled after PHP Monolog core, what is new in Monogo (Go idioms and cloud extensions), and comparative analysis against popular Go loggers.
 - [**Deliberately Unimplemented Features**](deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
 - [**Glossary & Concepts**](glossary.md): Terminology and concepts including Channels, Handlers (Stream, Deduplication, WhatFailureGroup, FingersCrossed, etc.), Processors, Per-Handler Processors, Formatters (Line, JSON, Logfmt), Bubbling, and Batching.
+- [**Continuous Integration & Quality Assurance**](ci.md): Details the GitHub Actions CI pipeline, test coverage, deadcode reachability analysis, and `golangci-lint` static analysis.
 
 ## Quick Overview
 
