@@ -268,9 +268,13 @@ type batchTrackingHandler struct {
 	batchCalls int
 }
 
-func newBatchTrackingHandler(minLevel monogo.Level) *batchTrackingHandler {
+func newBatchTrackingHandler(minLevel ...monogo.Level) *batchTrackingHandler {
+	lvl := monogo.DEBUG
+	if len(minLevel) > 0 {
+		lvl = minLevel[0]
+	}
 	return &batchTrackingHandler{
-		Test: handler.NewTest(minLevel),
+		Test: handler.NewTest(lvl),
 	}
 }
 
@@ -1736,3 +1740,69 @@ func TestBufferHandlerReset_FlushError(t *testing.T) {
 		t.Errorf("expected callback to receive %v, got %v", expectedErr, observedCallbackErr)
 	}
 }
+
+func TestHandlerLifecycleAndReachability(t *testing.T) {
+	ctx := t.Context()
+	testH := handler.NewTest(monogo.DEBUG)
+
+	// Buffer: IsHandling, HandleBatch, Close
+	bufH := handler.NewBuffer(testH, 5, monogo.ERROR)
+	if !bufH.IsHandling(ctx, monogo.DEBUG) {
+		t.Errorf("expected bufH.IsHandling to be true")
+	}
+	if err := bufH.HandleBatch(ctx, []monogo.Record{{Message: "batch1", Level: monogo.INFO}}); err != nil {
+		t.Fatalf("unexpected error from bufH.HandleBatch: %v", err)
+	}
+	if err := bufH.Close(ctx); err != nil {
+		t.Fatalf("unexpected error from bufH.Close: %v", err)
+	}
+
+	// Filter: NewFilterFunc, IsHandling, Close
+	filterFuncH := handler.NewFilterFunc(testH, func(r monogo.Record) bool {
+		return r.Level >= monogo.WARNING
+	})
+	if !filterFuncH.IsHandling(ctx, monogo.WARNING) {
+		t.Errorf("expected filterFuncH.IsHandling to be true")
+	}
+	if err := filterFuncH.Close(ctx); err != nil {
+		t.Fatalf("unexpected error from filterFuncH.Close: %v", err)
+	}
+
+	filterH := handler.NewFilter(testH, monogo.INFO, monogo.ERROR)
+	if !filterH.IsHandling(ctx, monogo.INFO) {
+		t.Errorf("expected filterH.IsHandling to be true")
+	}
+	if err := filterH.Close(ctx); err != nil {
+		t.Fatalf("unexpected error from filterH.Close: %v", err)
+	}
+
+	// FingersCrossed: IsHandling, HandleBatch, Close
+	fcH := handler.NewFingersCrossed(testH, monogo.ERROR, 10)
+	if !fcH.IsHandling(ctx, monogo.DEBUG) {
+		t.Errorf("expected fcH.IsHandling to be true")
+	}
+	if err := fcH.HandleBatch(ctx, []monogo.Record{{Message: "fc-batch", Level: monogo.DEBUG}}); err != nil {
+		t.Fatalf("unexpected error from fcH.HandleBatch: %v", err)
+	}
+	if err := fcH.Close(ctx); err != nil {
+		t.Fatalf("unexpected error from fcH.Close: %v", err)
+	}
+
+	// Group: IsHandling, Close
+	groupH := handler.NewGroup([]monogo.Handler{testH})
+	if !groupH.IsHandling(ctx, monogo.INFO) {
+		t.Errorf("expected groupH.IsHandling to be true")
+	}
+	if err := groupH.Close(ctx); err != nil {
+		t.Fatalf("unexpected error from groupH.Close: %v", err)
+	}
+
+	// RotatingFile: WithCompress
+	tmpDir := t.TempDir()
+	rotH := handler.NewRotatingFile(filepath.Join(tmpDir, "comp.log"), monogo.DEBUG, handler.WithCompress(true))
+	defer func() { _ = rotH.Close(ctx) }()
+	if !rotH.IsHandling(ctx, monogo.DEBUG) {
+		t.Errorf("expected rotH.IsHandling to be true")
+	}
+}
+
