@@ -104,12 +104,11 @@ func (b *Buffer) Close(ctx context.Context) error {
 	return err
 }
 
-// Reset flushes any buffered records to the wrapped handler, resets per-handler processors,
-// and resets the wrapped handler if it implements monogo.Resettable.
-// If Flush encounters an error, it is recorded and can be queried via LastResetError(),
-// or observed via WithResetErrorCallback.
-func (b *Buffer) Reset() {
-	err := b.Flush(context.Background())
+// Reset flushes any buffered records to the wrapped handler using the provided context,
+// resets per-handler processors, and resets the wrapped handler if it implements monogo.Resettable.
+// Any error encountered during Flush or downstream resets is returned directly.
+func (b *Buffer) Reset(ctx context.Context) error {
+	err := b.Flush(ctx)
 	b.mu.Lock()
 	b.lastResetErr = err
 	cb := b.resetErrorCallback
@@ -119,10 +118,15 @@ func (b *Buffer) Reset() {
 		cb(err)
 	}
 
-	b.BaseHandler.Reset()
-	if r, ok := b.handler.(monogo.Resettable); ok {
-		r.Reset()
+	if baseErr := b.BaseHandler.Reset(ctx); baseErr != nil && err == nil {
+		err = baseErr
 	}
+	if r, ok := b.handler.(monogo.Resettable); ok {
+		if hErr := r.Reset(ctx); hErr != nil && err == nil {
+			err = hErr
+		}
+	}
+	return err
 }
 
 // LastResetError returns the last error encountered while flushing during Reset(), or nil if none.

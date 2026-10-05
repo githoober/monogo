@@ -1,6 +1,7 @@
 package processor_test
 
 import (
+	"context"
 	"math"
 	"testing"
 
@@ -159,7 +160,9 @@ func TestUIDProcessor(t *testing.T) {
 	}
 
 	// Reset regenerates UID
-	u.Reset()
+	if err := u.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from u.Reset: %v", err)
+	}
 	uid2 := u.UID()
 	if uid2 == uid1 {
 		t.Fatalf("expected UID to change after Reset()")
@@ -224,7 +227,7 @@ func TestUIDProcessor(t *testing.T) {
 		}()
 		go func() {
 			for j := 0; j < 20; j++ {
-				u.Reset()
+				_ = u.Reset(context.Background())
 			}
 			done <- true
 		}()

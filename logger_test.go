@@ -2,6 +2,7 @@ package monogo_test
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -363,9 +364,10 @@ type mockResettableHandler struct {
 	resetCount int
 }
 
-func (m *mockResettableHandler) Reset() {
+func (m *mockResettableHandler) Reset(_ context.Context) error {
 	m.resetCount++
 	m.records = nil
+	return nil
 }
 
 type mockResettableProcessor struct {
@@ -381,9 +383,10 @@ func (m *mockResettableProcessor) Process(r monogo.Record) monogo.Record {
 	return r
 }
 
-func (m *mockResettableProcessor) Reset() {
+func (m *mockResettableProcessor) Reset(_ context.Context) error {
 	m.resetCount++
 	m.tag = "reset"
+	return nil
 }
 
 func TestLoggerReset_CascadesToHandlersAndProcessors(t *testing.T) {
@@ -404,7 +407,9 @@ func TestLoggerReset_CascadesToHandlersAndProcessors(t *testing.T) {
 	}
 
 	// Call Reset on Logger
-	logger.Reset()
+	if err := logger.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from logger.Reset: %v", err)
+	}
 
 	if rh1.resetCount != 1 {
 		t.Errorf("expected rh1 resetCount=1, got %d", rh1.resetCount)
@@ -427,15 +432,19 @@ func TestLoggerReset_CascadesToHandlersAndProcessors(t *testing.T) {
 
 func TestLoggerReset_EmptyLoggerDoesNotPanic(t *testing.T) {
 	emptyLogger := monogo.New("empty", nil, nil)
-	// Should not panic
-	emptyLogger.Reset()
+	// Should not panic or error
+	if err := emptyLogger.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from emptyLogger.Reset: %v", err)
+	}
 }
 
 func TestLoggerImplementsResettable(t *testing.T) {
 	var _ monogo.Resettable = (*monogo.Logger)(nil)
 	l := monogo.New("test", nil, nil)
 	var r monogo.Resettable = l
-	r.Reset()
+	if err := r.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from r.Reset: %v", err)
+	}
 }
 
 type blockingResettableHandler struct {
@@ -470,11 +479,12 @@ func (b *blockingResettableHandler) Close(ctx context.Context) error {
 	return nil
 }
 
-func (b *blockingResettableHandler) Reset() {
+func (b *blockingResettableHandler) Reset(_ context.Context) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.resetCalled = true
 	b.records = nil
+	return nil
 }
 
 func TestLoggerReset_LifecycleBarrier(t *testing.T) {
@@ -498,7 +508,7 @@ func TestLoggerReset_LifecycleBarrier(t *testing.T) {
 	// Launch Reset in separate goroutine; it should block until in-flight Log finishes
 	resetDone := make(chan struct{})
 	go func() {
-		logger.Reset()
+		_ = logger.Reset(ctx)
 		close(resetDone)
 	}()
 
@@ -536,6 +546,26 @@ func TestLoggerReset_LifecycleBarrier(t *testing.T) {
 	}
 	if recordCount != 0 {
 		t.Errorf("expected 0 records after in-flight log completed and Reset ran, got %d", recordCount)
+	}
+}
+
+type errorResettableHandler struct {
+	mockHandler
+	err error
+}
+
+func (e *errorResettableHandler) Reset(_ context.Context) error {
+	return e.err
+}
+
+func TestLoggerReset_PropagatesError(t *testing.T) {
+	expectedErr := fmt.Errorf("reset failed")
+	h := &errorResettableHandler{err: expectedErr}
+	logger := monogo.New("err-test", []monogo.Handler{h}, nil)
+
+	err := logger.Reset(context.Background())
+	if err != expectedErr {
+		t.Fatalf("expected %v, got %v", expectedErr, err)
 	}
 }
 

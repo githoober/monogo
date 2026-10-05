@@ -89,11 +89,17 @@ func (g *Group) Close(ctx context.Context) error {
 }
 
 // Reset resets per-handler processors and all nested handlers implementing monogo.Resettable.
-func (g *Group) Reset() {
-	g.BaseHandler.Reset()
+func (g *Group) Reset(ctx context.Context) error {
+	var lastErr error
+	if err := g.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
+	}
 	for _, h := range g.handlers {
 		if r, ok := h.(monogo.Resettable); ok {
-			r.Reset()
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
+	return lastErr
 }

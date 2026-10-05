@@ -96,16 +96,22 @@ func (f *FingersCrossed) HandleBatch(ctx context.Context, records []monogo.Recor
 
 // Reset clears buffer, resets triggered status back to un-triggered, resets per-handler processors,
 // and resets the wrapped handler if it implements monogo.Resettable.
-func (f *FingersCrossed) Reset() {
+func (f *FingersCrossed) Reset(ctx context.Context) error {
 	f.mu.Lock()
 	f.triggered = false
 	f.buffer = make([]monogo.Record, 0, f.bufferSize)
 	f.mu.Unlock()
 
-	f.BaseHandler.Reset()
-	if r, ok := f.handler.(monogo.Resettable); ok {
-		r.Reset()
+	var lastErr error
+	if err := f.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
 	}
+	if r, ok := f.handler.(monogo.Resettable); ok {
+		if err := r.Reset(ctx); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // Clear discards all buffered records and resets triggered status back to un-triggered.

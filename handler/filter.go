@@ -101,9 +101,15 @@ func (f *Filter) Close(ctx context.Context) error {
 }
 
 // Reset resets per-handler processors and resets the wrapped handler if it implements monogo.Resettable.
-func (f *Filter) Reset() {
-	f.BaseHandler.Reset()
-	if r, ok := f.handler.(monogo.Resettable); ok {
-		r.Reset()
+func (f *Filter) Reset(ctx context.Context) error {
+	var lastErr error
+	if err := f.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
 	}
+	if r, ok := f.handler.(monogo.Resettable); ok {
+		if err := r.Reset(ctx); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }

@@ -12,7 +12,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
-- **Resettable Lifecycle**: Modeled after Monolog's `ResettableInterface`, `monogo.Resettable` (`Reset()`) allows loggers, handlers, and processors to reset buffers, re-arm triggers, clear deduplication stores, and regenerate request UIDs between jobs in long-running services.
+- **Resettable Lifecycle**: Modeled after Monolog's `ResettableInterface`, `monogo.Resettable` (`Reset(ctx context.Context) error`) allows loggers, handlers, and processors to reset buffers, re-arm triggers, clear deduplication stores, and regenerate request UIDs between jobs in long-running services.
 - **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Environment variables, Memory stats, Tags, Unique request ID/UID).
 - **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
 - **Backend Integrations**:
@@ -252,7 +252,7 @@ Processors enrich log records with contextual and system diagnostic metadata bef
 - **`processor.Hostname()`**: Injects the OS hostname into `Extra["hostname"]` (Monolog `HostnameProcessor`).
 - **`processor.ProcessId()`**: Injects the current OS process ID (`os.Getpid()`) into `Extra["pid"]` (Monolog `ProcessIdProcessor`).
 - **`processor.Memory()`**: Injects runtime memory allocation statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]` (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
-- **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset()` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
+- **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset(ctx)` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
 - **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
 - **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
 
@@ -300,23 +300,23 @@ jsonArray := formatter.NewJSON("").WithBatchMode(formatter.BatchModeJSON)
 
 ## Resettable Interface & Long-Running Services
 
-Modeled after PHP Monolog's `ResettableInterface`, the `monogo.Resettable` interface (`Reset()`) allows long-running Go applications (background workers, task consumers, HTTP servers, or test runners) to cleanly reset state between requests or jobs:
+Modeled after PHP Monolog's `ResettableInterface`, the `monogo.Resettable` interface (`Reset(ctx context.Context) error`) allows long-running Go applications (background workers, task consumers, HTTP servers, or test runners) to cleanly reset state between requests or jobs:
 
 ```go
 type Resettable interface {
-	Reset()
+	Reset(ctx context.Context) error
 }
 ```
 
-### Cascading Reset
-Calling `logger.Reset()` automatically traverses the logger stack:
-- **Handlers:** Dispatches `Reset()` to each configured handler.
-  - **`Buffer`**: Flushes buffered records to wrapped handler, resets per-handler processors, and resets wrapped handlers. (Or use `handler.Clear()` to discard records without flushing).
+### Cascading Reset & Concurrency Barrier
+Calling `logger.Reset(ctx)` automatically traverses the logger stack while acting as a concurrency barrier (waiting for any in-flight `Log` calls to finish, and blocking new `Log` calls until reset finishes):
+- **Handlers:** Dispatches `Reset(ctx)` to each configured handler implementing `Resettable`.
+  - **`Buffer`**: Flushes buffered records using `ctx` to the wrapped handler, resets per-handler processors, and resets wrapped handlers. Returns any flush error. (Or use `handler.Clear()` to discard records without flushing).
   - **`FingersCrossed`**: Disarms triggered status back to buffering mode, clears the buffer, and resets inner handlers. (Or use `handler.Clear()` to discard records).
   - **`Deduplication`**: Clears the sliding deduplication store and resets wrapped handlers.
-  - **`Group` & `WhatFailureGroup`**: Cascades `Reset()` across all child handlers (with `WhatFailureGroup` safely suppressing and reporting panics via callback).
+  - **`Group` & `WhatFailureGroup`**: Cascades `Reset(ctx)` across all child handlers (with `WhatFailureGroup` safely suppressing and reporting panics via callback).
   - **`Test`**: Clears recorded log records in memory.
-- **Processors:** Dispatches `Reset()` to each configured processor.
+- **Processors:** Dispatches `Reset(ctx)` to each configured processor implementing `Resettable`.
   - **`processor.UID()`**: Regenerates a fresh request/operation identifier in `Extra["uid"]`.
 
 ### Example: Worker Pool Cycle
@@ -347,7 +347,7 @@ func main() {
 	jobs := []string{"job-101", "job-102", "job-103"}
 	for _, jobID := range jobs {
 		// Reset logger between jobs: regenerates UID and re-arms FingersCrossed buffer
-		logger.Reset()
+		_ = logger.Reset(ctx)
 
 		logger.Info(ctx, "Starting job", map[string]interface{}{"job_id": jobID})
 		// If error occurs, FingersCrossed triggers and dumps full diagnostic logs with job's UID

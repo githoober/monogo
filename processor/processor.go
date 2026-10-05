@@ -1,6 +1,7 @@
 package processor
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -117,8 +118,8 @@ func NewUIDProcessor(length ...int) *UIDProcessor {
 	}
 	p := &UIDProcessor{
 		length: l,
+		uid:    generateUID(l),
 	}
-	p.Reset()
 	return p
 }
 
@@ -130,10 +131,11 @@ func (u *UIDProcessor) UID() string {
 }
 
 // Reset generates a new unique identifier.
-func (u *UIDProcessor) Reset() {
+func (u *UIDProcessor) Reset(_ context.Context) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	u.uid = generateUID(u.length)
+	return nil
 }
 
 // Process enriches the log record by adding the current UID to Extra["uid"].

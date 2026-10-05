@@ -213,10 +213,11 @@ func (l *Logger) Close(ctx context.Context) error {
 	return lastErr
 }
 
-// Reset resets all handlers and processors that implement Resettable.
+// Reset resets all handlers and processors that implement Resettable using the provided context.
 // It acts as a strict lifecycle barrier: all in-flight Log calls complete before Reset begins,
 // and incoming Log calls wait until Reset completes, preventing records from leaking across cycles.
-func (l *Logger) Reset() {
+// Returns the last error encountered during reset, if any.
+func (l *Logger) Reset(ctx context.Context) error {
 	l.cycleMu.Lock()
 	defer l.cycleMu.Unlock()
 
@@ -227,16 +228,22 @@ func (l *Logger) Reset() {
 	copy(processors, l.processors)
 	l.mu.RUnlock()
 
+	var lastErr error
 	for _, h := range handlers {
 		if r, ok := h.(Resettable); ok {
-			r.Reset()
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
 	for _, p := range processors {
 		if r, ok := p.(Resettable); ok {
-			r.Reset()
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
+	return lastErr
 }
 
 func mergeContexts(ctxs ...map[string]interface{}) map[string]interface{} {

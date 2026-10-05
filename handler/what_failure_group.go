@@ -135,17 +135,17 @@ func (w *WhatFailureGroup) Close(ctx context.Context) error {
 }
 
 // Reset resets per-handler processors and all nested handlers implementing monogo.Resettable,
-// safely suppressing and reporting any panics via the error callback.
-func (w *WhatFailureGroup) Reset() {
-	w.BaseHandler.Reset()
+// safely suppressing and reporting any panics via the error callback. Always returns nil.
+func (w *WhatFailureGroup) Reset(ctx context.Context) error {
+	_ = w.BaseHandler.Reset(ctx)
 	for _, h := range w.handlers {
 		if r, ok := h.(monogo.Resettable); ok {
 			invokeSafe(h, w.onError, func() error {
-				r.Reset()
-				return nil
+				return r.Reset(ctx)
 			})
 		}
 	}
+	return nil
 }
 
 func safeIsHandling(h monogo.Handler, onError WhatFailureCallback, ctx context.Context, level monogo.Level) bool {

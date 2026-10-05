@@ -904,7 +904,9 @@ func TestDeduplicationHandlerReset(t *testing.T) {
 	}
 
 	// Reset deduplication handler (cascades to inner testH as well)
-	dedupH.Reset()
+	if err := dedupH.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from dedupH.Reset: %v", err)
+	}
 	if len(testH.Records()) != 0 {
 		t.Fatalf("expected 0 records after Reset(), got %d", len(testH.Records()))
 	}
@@ -965,7 +967,9 @@ func TestDeduplicationHandlerCustomStore(t *testing.T) {
 		t.Errorf("expected custom store IsDuplicate to be called")
 	}
 
-	dedupH.Reset()
+	if err := dedupH.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from dedupH.Reset: %v", err)
+	}
 	if !mockStore.calledReset {
 		t.Errorf("expected custom store Reset to be called")
 	}
@@ -1390,7 +1394,7 @@ func TestWhatFailureGroupWithProcessor(t *testing.T) {
 	}
 
 	// Test batch with processors
-	h1.Reset()
+	_ = h1.Reset(ctx)
 	batch := []monogo.Record{
 		{Message: "b1", Level: monogo.INFO, Extra: make(map[string]interface{})},
 		{Message: "b2", Level: monogo.INFO, Extra: make(map[string]interface{})},
@@ -1453,8 +1457,9 @@ func (m *mockResettableProc) Process(r monogo.Record) monogo.Record {
 	return r
 }
 
-func (m *mockResettableProc) Reset() {
+func (m *mockResettableProc) Reset(_ context.Context) error {
 	m.resetCount++
+	return nil
 }
 
 type mockPanicResetHandler struct {
@@ -1462,7 +1467,7 @@ type mockPanicResetHandler struct {
 	resetCount int
 }
 
-func (m *mockPanicResetHandler) Reset() {
+func (m *mockPanicResetHandler) Reset(_ context.Context) error {
 	m.resetCount++
 	panic("handler reset exploded")
 }
@@ -1498,8 +1503,10 @@ func TestBufferHandlerResetAndClear(t *testing.T) {
 
 	// Calling Reset() flushes buffered records to testH and resets testH + proc
 	// But wait: Reset() on testH clears testH's records AFTER receiving flushed records!
-	// Let's trace: bufH.Reset() -> _ = b.Flush() (testH gets msg1, msg2) -> b.BaseHandler.Reset() (proc.Reset()) -> testH.Reset() (records cleared!)
-	bufH.Reset()
+	// Let's trace: bufH.Reset() -> b.Flush(ctx) (testH gets msg1, msg2) -> b.BaseHandler.Reset(ctx) (proc.Reset()) -> testH.Reset(ctx) (records cleared!)
+	if err := bufH.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from bufH.Reset: %v", err)
+	}
 
 	if proc.resetCount != 1 {
 		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
@@ -1544,7 +1551,9 @@ func TestFingersCrossedResetAndClear(t *testing.T) {
 	}
 
 	// Reset should disarm triggered flag, clear buffer, call proc.Reset(), and call testH.Reset()
-	fc.Reset()
+	if err := fc.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from fc.Reset: %v", err)
+	}
 
 	if proc.resetCount != 1 {
 		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
@@ -1581,7 +1590,9 @@ func TestFilterHandlerReset(t *testing.T) {
 		t.Fatalf("expected 1 record, got %d", len(testH.Records()))
 	}
 
-	filterH.Reset()
+	if err := filterH.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from filterH.Reset: %v", err)
+	}
 
 	if proc.resetCount != 1 {
 		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
@@ -1604,7 +1615,9 @@ func TestGroupHandlerReset(t *testing.T) {
 		t.Fatalf("expected 1 record in each test handler")
 	}
 
-	groupH.Reset()
+	if err := groupH.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from groupH.Reset: %v", err)
+	}
 
 	if proc.resetCount != 1 {
 		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
@@ -1634,7 +1647,7 @@ func TestWhatFailureGroupReset_PanicSuppression(t *testing.T) {
 	_ = testH.Handle(ctx, monogo.Record{Message: "rec", Level: monogo.INFO})
 
 	// Reset should NOT panic despite panicH panicking in Reset()
-	wfg.Reset()
+	_ = wfg.Reset(ctx)
 
 	if proc.resetCount != 1 {
 		t.Errorf("expected proc resetCount=1, got %d", proc.resetCount)
@@ -1658,7 +1671,9 @@ func TestBaseHandlerReset(t *testing.T) {
 	proc2 := &mockResettableProc{name: "p2"}
 	base := handler.NewBaseHandler(monogo.DEBUG, handler.WithProcessor(proc1, proc2))
 
-	base.Reset()
+	if err := base.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from base.Reset: %v", err)
+	}
 
 	if proc1.resetCount != 1 || proc2.resetCount != 1 {
 		t.Errorf("expected both processors to be reset")
@@ -1666,7 +1681,7 @@ func TestBaseHandlerReset(t *testing.T) {
 
 	// Typed nil safety
 	var nilBase *handler.BaseHandler
-	nilBase.Reset() // should not panic
+	_ = nilBase.Reset(context.Background()) // should not panic
 }
 
 type failingHandler struct {
@@ -1708,9 +1723,12 @@ func TestBufferHandlerReset_FlushError(t *testing.T) {
 	}
 
 	// Trigger Reset
-	bufH.Reset()
+	resetErr := bufH.Reset(ctx)
 
-	// Verify error was observed both via LastResetError() and callback
+	// Verify error was observed via returned error, LastResetError(), and callback
+	if resetErr != expectedErr {
+		t.Errorf("expected Reset(ctx) to return %v, got %v", expectedErr, resetErr)
+	}
 	if bufH.LastResetError() != expectedErr {
 		t.Errorf("expected LastResetError to be %v, got %v", expectedErr, bufH.LastResetError())
 	}

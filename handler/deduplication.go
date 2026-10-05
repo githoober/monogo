@@ -211,12 +211,18 @@ func (d *Deduplication) HandleBatch(ctx context.Context, records []monogo.Record
 
 // Reset clears the deduplication store, resets per-handler processors, and resets
 // the wrapped handler if it implements monogo.Resettable.
-func (d *Deduplication) Reset() {
-	d.BaseHandler.Reset()
+func (d *Deduplication) Reset(ctx context.Context) error {
+	var lastErr error
+	if err := d.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
+	}
 	d.store.Reset()
 	if r, ok := d.handler.(monogo.Resettable); ok {
-		r.Reset()
+		if err := r.Reset(ctx); err != nil {
+			lastErr = err
+		}
 	}
+	return lastErr
 }
 
 // Close closes the wrapped handler.

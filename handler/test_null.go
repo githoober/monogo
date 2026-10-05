@@ -67,17 +67,20 @@ func (t *Test) HasRecord(predicate func(monogo.Record) bool) bool {
 }
 
 // Reset clears recorded records and resets per-handler processors.
-func (t *Test) Reset() {
-	t.BaseHandler.Reset()
+func (t *Test) Reset(ctx context.Context) error {
+	var lastErr error
+	if err := t.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.records = make([]monogo.Record, 0)
+	return lastErr
 }
 
 // Close resets the handler.
 func (t *Test) Close(ctx context.Context) error {
-	t.Reset()
-	return nil
+	return t.Reset(ctx)
 }
 
 // Null discards all records.

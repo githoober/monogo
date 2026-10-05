@@ -140,13 +140,17 @@ func (b *BaseHandler) ProcessRecord(record monogo.Record) monogo.Record {
 }
 
 // Reset resets all per-handler processors that implement monogo.Resettable.
-func (b *BaseHandler) Reset() {
+func (b *BaseHandler) Reset(ctx context.Context) error {
 	if b == nil {
-		return
+		return nil
 	}
+	var lastErr error
 	for _, p := range b.processors {
 		if r, ok := p.(monogo.Resettable); ok {
-			r.Reset()
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
+	return lastErr
 }
