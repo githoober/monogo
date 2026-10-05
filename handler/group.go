@@ -12,6 +12,8 @@ type Group struct {
 	handlers []monogo.Handler
 }
 
+var _ monogo.Resettable = (*Group)(nil)
+
 // NewGroup creates a Group handler with optional configuration options.
 func NewGroup(handlers []monogo.Handler, opts ...Option) *Group {
 	return &Group{
@@ -81,6 +83,22 @@ func (g *Group) Close(ctx context.Context) error {
 	for _, h := range g.handlers {
 		if err := h.Close(ctx); err != nil {
 			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// Reset resets per-handler processors and all nested handlers implementing monogo.Resettable.
+func (g *Group) Reset(ctx context.Context) error {
+	var lastErr error
+	if err := g.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
+	}
+	for _, h := range g.handlers {
+		if r, ok := h.(monogo.Resettable); ok {
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
 	return lastErr

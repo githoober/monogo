@@ -54,3 +54,15 @@ type ProcessableHandler interface {
 	ProcessRecord(record Record) Record
 }
 
+// Resettable is implemented by loggers, handlers, or processors that maintain
+// state across log cycles and need to be reset to their initial state.
+//
+// Resetting ends a log cycle, flushes or cleans all buffers, resets internal state,
+// and gets the component back to a state in which it can receive log records cleanly again.
+// The provided ctx is used for any I/O or flushing operations during reset.
+// This is useful in long-running processes (e.g. workers, task queues, or servers serving
+// multiple jobs) to prevent state or logs from leaking between requests or jobs, or in tests.
+type Resettable interface {
+	Reset(ctx context.Context) error
+}
+

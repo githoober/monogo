@@ -1,6 +1,9 @@
 package processor_test
 
 import (
+	"context"
+	"fmt"
+	"math"
 	"testing"
 
 	"github.com/githoober/monogo"
@@ -137,4 +140,133 @@ func TestEnvProcessors(t *testing.T) {
 		t.Errorf("expected extra['region']='us-east-1', got: %v", rec2.Extra["region"])
 	}
 }
+
+func TestUIDProcessor(t *testing.T) {
+	// Interface checks
+	var _ monogo.Processor = (*processor.UIDProcessor)(nil)
+	var _ monogo.Resettable = (*processor.UIDProcessor)(nil)
+
+	// Default length (16)
+	u := processor.NewUIDProcessor()
+	uid1 := u.UID()
+	if len(uid1) != 16 {
+		t.Fatalf("expected default UID length 16, got %d (%s)", len(uid1), uid1)
+	}
+
+	// Stays constant across calls
+	rec1 := u.Process(monogo.Record{Message: "m1"})
+	rec2 := u.Process(monogo.Record{Message: "m2"})
+	if rec1.Extra["uid"] != uid1 || rec2.Extra["uid"] != uid1 {
+		t.Fatalf("expected UID to remain constant across Process calls")
+	}
+
+	// Reset regenerates UID
+	if err := u.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from u.Reset: %v", err)
+	}
+	uid2 := u.UID()
+	if uid2 == uid1 {
+		t.Fatalf("expected UID to change after Reset()")
+	}
+	if len(uid2) != 16 {
+		t.Fatalf("expected UID length 16, got %d", len(uid2))
+	}
+
+	rec3 := u.Process(monogo.Record{Message: "m3"})
+	if rec3.Extra["uid"] != uid2 {
+		t.Fatalf("expected new UID after reset to be %s, got %v", uid2, rec3.Extra["uid"])
+	}
+
+	// Custom length (7 chars, matching PHP Monolog default)
+	u7 := processor.UID(7)
+	if len(u7.UID()) != 7 {
+		t.Fatalf("expected UID length 7, got %d (%s)", len(u7.UID()), u7.UID())
+	}
+
+	// Custom length (32 chars)
+	u32 := processor.NewUIDProcessor(32)
+	if len(u32.UID()) != 32 {
+		t.Fatalf("expected UID length 32, got %d (%s)", len(u32.UID()), u32.UID())
+	}
+
+	// Boundary length tests: 1 (MinUIDLength) and 64 (MaxUIDLength)
+	uMin := processor.NewUIDProcessor(1)
+	if len(uMin.UID()) != 1 {
+		t.Fatalf("expected UID length 1, got %d", len(uMin.UID()))
+	}
+	uMax := processor.NewUIDProcessor(64)
+	if len(uMax.UID()) != 64 {
+		t.Fatalf("expected UID length 64, got %d", len(uMax.UID()))
+	}
+
+	// Out-of-bounds lengths should safely default to 16 without overflow, panic, or OOM
+	uNegative := processor.NewUIDProcessor(-10)
+	if len(uNegative.UID()) != 16 {
+		t.Fatalf("expected negative length to default to 16, got %d", len(uNegative.UID()))
+	}
+	uZero := processor.NewUIDProcessor(0)
+	if len(uZero.UID()) != 16 {
+		t.Fatalf("expected zero length to default to 16, got %d", len(uZero.UID()))
+	}
+	uOverMax := processor.NewUIDProcessor(65)
+	if len(uOverMax.UID()) != 16 {
+		t.Fatalf("expected length > 64 to default to 16, got %d", len(uOverMax.UID()))
+	}
+	uHuge := processor.NewUIDProcessor(math.MaxInt)
+	if len(uHuge.UID()) != 16 {
+		t.Fatalf("expected math.MaxInt to default to 16 without overflow/panic, got %d", len(uHuge.UID()))
+	}
+
+	// Concurrent usage safety
+	done := make(chan bool)
+	for i := 0; i < 5; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				_ = u.Process(monogo.Record{Message: "concurrent"})
+			}
+			done <- true
+		}()
+		go func() {
+			for j := 0; j < 20; j++ {
+				_ = u.Reset(context.Background())
+			}
+			done <- true
+		}()
+	}
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+}
+
+type failingReader struct{}
+
+func (f *failingReader) Read(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("entropy failure")
+}
+
+func TestUIDProcessor_FallbackEntropyFailure(t *testing.T) {
+	restore := processor.SetRandReaderForTest(&failingReader{})
+	defer restore()
+
+	lengths := []int{1, 2, 7, 16, 32, 64}
+	for _, l := range lengths {
+		u := processor.NewUIDProcessor(l)
+		uid1 := u.UID()
+		if len(uid1) != l {
+			t.Fatalf("expected fallback UID length %d, got %d (%s)", l, len(uid1), uid1)
+		}
+		// Reset immediately (same clock tick possible)
+		if err := u.Reset(context.Background()); err != nil {
+			t.Fatalf("unexpected reset error: %v", err)
+		}
+		uid2 := u.UID()
+		if len(uid2) != l {
+			t.Fatalf("expected fallback UID length %d after reset, got %d (%s)", l, len(uid2), uid2)
+		}
+		if uid1 == uid2 {
+			t.Fatalf("expected fallback UIDs of length %d to be unique across calls, but got identical: %s", l, uid1)
+		}
+	}
+}
+
 

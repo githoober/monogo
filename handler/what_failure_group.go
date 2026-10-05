@@ -37,6 +37,7 @@ var (
 	_ monogo.BatchHandler       = (*WhatFailureGroup)(nil)
 	_ monogo.Bubbler            = (*WhatFailureGroup)(nil)
 	_ monogo.ProcessableHandler = (*WhatFailureGroup)(nil)
+	_ monogo.Resettable         = (*WhatFailureGroup)(nil)
 )
 
 // NewWhatFailureGroup creates a WhatFailureGroup handler wrapping the given handlers with optional configuration options.
@@ -129,6 +130,20 @@ func (w *WhatFailureGroup) Close(ctx context.Context) error {
 		invokeSafe(h, w.onError, func() error {
 			return h.Close(ctx)
 		})
+	}
+	return nil
+}
+
+// Reset resets per-handler processors and all nested handlers implementing monogo.Resettable,
+// safely suppressing and reporting any panics via the error callback. Always returns nil.
+func (w *WhatFailureGroup) Reset(ctx context.Context) error {
+	_ = w.BaseHandler.Reset(ctx)
+	for _, h := range w.handlers {
+		if r, ok := h.(monogo.Resettable); ok {
+			invokeSafe(h, w.onError, func() error {
+				return r.Reset(ctx)
+			})
+		}
 	}
 	return nil
 }

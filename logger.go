@@ -8,9 +8,27 @@ import (
 
 type Logger struct {
 	mu         sync.RWMutex
+	cycleMu    *sync.RWMutex
 	name       string
 	handlers   []Handler
 	processors []Processor
+}
+
+var _ Resettable = (*Logger)(nil)
+
+func (l *Logger) getCycleMu() *sync.RWMutex {
+	l.mu.RLock()
+	m := l.cycleMu
+	l.mu.RUnlock()
+	if m != nil {
+		return m
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.cycleMu == nil {
+		l.cycleMu = new(sync.RWMutex)
+	}
+	return l.cycleMu
 }
 
 func New(name string, handlers []Handler, processors []Processor) *Logger {
@@ -21,6 +39,7 @@ func New(name string, handlers []Handler, processors []Processor) *Logger {
 		processors = make([]Processor, 0)
 	}
 	return &Logger{
+		cycleMu:    new(sync.RWMutex),
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -78,9 +97,15 @@ func (l *Logger) With(ctxMap map[string]interface{}) *Logger {
 	processors[0] = processor
 	copy(processors[1:], l.processors)
 	name := l.name
+	cycleMu := l.cycleMu
 	l.mu.RUnlock()
 
+	if cycleMu == nil {
+		cycleMu = l.getCycleMu()
+	}
+
 	return &Logger{
+		cycleMu:    cycleMu,
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -89,15 +114,21 @@ func (l *Logger) With(ctxMap map[string]interface{}) *Logger {
 
 func (l *Logger) WithName(name string) *Logger {
 	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	handlers := make([]Handler, len(l.handlers))
 	copy(handlers, l.handlers)
 
 	processors := make([]Processor, len(l.processors))
 	copy(processors, l.processors)
 
+	cycleMu := l.cycleMu
+	l.mu.RUnlock()
+
+	if cycleMu == nil {
+		cycleMu = l.getCycleMu()
+	}
+
 	return &Logger{
+		cycleMu:    cycleMu,
 		name:       name,
 		handlers:   handlers,
 		processors: processors,
@@ -123,6 +154,10 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 	if !l.IsHandling(ctx, level) {
 		return nil
 	}
+
+	cycleMu := l.getCycleMu()
+	cycleMu.RLock()
+	defer cycleMu.RUnlock()
 
 	mergedCtx := mergeContexts(FromContext(ctx), mergeContexts(ctxMap...))
 
@@ -193,12 +228,50 @@ func (l *Logger) Emergency(ctx context.Context, msg string, ctxMap ...map[string
 }
 
 func (l *Logger) Close(ctx context.Context) error {
+	cycleMu := l.getCycleMu()
+	cycleMu.Lock()
+	defer cycleMu.Unlock()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	var lastErr error
 	for _, h := range l.handlers {
 		if err := h.Close(ctx); err != nil {
 			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// Reset resets all handlers and processors that implement Resettable using the provided context.
+// It acts as a strict lifecycle barrier: all in-flight Log calls complete before Reset begins,
+// and incoming Log calls wait until Reset completes, preventing records from leaking across cycles.
+// Returns the last error encountered during reset, if any.
+func (l *Logger) Reset(ctx context.Context) error {
+	cycleMu := l.getCycleMu()
+	cycleMu.Lock()
+	defer cycleMu.Unlock()
+
+	l.mu.RLock()
+	handlers := make([]Handler, len(l.handlers))
+	copy(handlers, l.handlers)
+	processors := make([]Processor, len(l.processors))
+	copy(processors, l.processors)
+	l.mu.RUnlock()
+
+	var lastErr error
+	for _, h := range handlers {
+		if r, ok := h.(Resettable); ok {
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
+		}
+	}
+	for _, p := range processors {
+		if r, ok := p.(Resettable); ok {
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
 		}
 	}
 	return lastErr

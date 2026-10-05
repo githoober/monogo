@@ -19,6 +19,8 @@ type FingersCrossed struct {
 	mu          sync.Mutex
 }
 
+var _ monogo.Resettable = (*FingersCrossed)(nil)
+
 // NewFingersCrossed creates a FingersCrossed handler with optional configuration options.
 // bufferSize specifies the maximum number of records to buffer before triggering (0 = unlimited).
 func NewFingersCrossed(handler monogo.Handler, actionLevel monogo.Level, bufferSize int, opts ...Option) *FingersCrossed {
@@ -92,8 +94,28 @@ func (f *FingersCrossed) HandleBatch(ctx context.Context, records []monogo.Recor
 	return nil
 }
 
-// Reset clears buffer and resets triggered status back to un-triggered.
-func (f *FingersCrossed) Reset() {
+// Reset clears buffer, resets triggered status back to un-triggered, resets per-handler processors,
+// and resets the wrapped handler if it implements monogo.Resettable.
+func (f *FingersCrossed) Reset(ctx context.Context) error {
+	f.mu.Lock()
+	f.triggered = false
+	f.buffer = make([]monogo.Record, 0, f.bufferSize)
+	f.mu.Unlock()
+
+	var lastErr error
+	if err := f.BaseHandler.Reset(ctx); err != nil {
+		lastErr = err
+	}
+	if r, ok := f.handler.(monogo.Resettable); ok {
+		if err := r.Reset(ctx); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+// Clear discards all buffered records and resets triggered status back to un-triggered.
+func (f *FingersCrossed) Clear() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.triggered = false

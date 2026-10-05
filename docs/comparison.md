@@ -23,6 +23,7 @@ Monogo preserves the core architecture, data model, and processing pipeline of P
 | **Bubbling Control** | `$bubble = false` on `AbstractProcessingHandler` | `monogo.Bubbler` interface & `handler.WithBubble(bool)` | Prevents record propagation down the handler stack when a handler consumes the record. |
 | **Per-Handler Processors** | `ProcessableHandlerInterface` / `pushProcessor` | `monogo.ProcessableHandler` & `handler.WithProcessor(...)` | Allows individual handlers to attach dedicated processors. |
 | **Batch Processing** | `HandlerInterface::handleBatch` & `FormatterInterface::formatBatch` | `monogo.BatchHandler` & `monogo.BatchFormatter` | Modeled after Monolog's batch contracts. In PHP Monolog, `handleBatch` is mandatory on `HandlerInterface` and `formatBatch` on `FormatterInterface` (relying on base class `foreach` loops). Monogo adapts this using Go's Interface Segregation Principle (`BatchHandler` / `BatchFormatter` are optional interfaces checked via type assertion, falling back automatically to single-record `Handle` loops). |
+| **Resettable State** | `Monolog\ResettableInterface` (`reset(): void`) | `monogo.Resettable` (`Reset(ctx) error`) | Resets internal buffers, deduplication stores, and processor states (such as `processor.UID`) between log cycles or worker jobs in long-running processes. Modeled after Monolog's `ResettableInterface`; `logger.Reset(ctx)` acts as a concurrency barrier and cascades down through all handlers and processors with context propagation and error return. |
 
 ---
 
@@ -71,7 +72,7 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`processor.Caller`](../processor/processor.go) | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site using Go's `runtime.Caller` instead of PHP's `debug_backtrace()`. |
 | [`processor.Hostname`](../processor/processor.go) | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]` via `os.Hostname()`. |
 | [`processor.Memory`](../processor/processor.go) | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes` from `runtime.MemStats`) instead of PHP's `memory_get_usage()`. |
-| [`processor.UID`](../processor/processor.go) | `Monolog\Processor\UidProcessor` | Injects a random unique identifier string into `Extra["uid"]` to trace operations. |
+| [`processor.UID`](../processor/processor.go) | `Monolog\Processor\UidProcessor` | Injects a unique identifier string into `Extra["uid"]` to trace operations across a lifecycle; regenerates a new UID when `Reset(ctx)` is invoked (implements `monogo.Resettable`). |
 | [`processor.ProcessId`](../processor/processor.go) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. |
 | [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables instead of git CLI execution. |
 | [`processor.Tag`](../processor/processor.go) | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |

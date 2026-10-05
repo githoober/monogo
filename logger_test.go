@@ -2,7 +2,10 @@ package monogo_test
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/githoober/monogo"
 	"github.com/githoober/monogo/adapter/slogadapter"
@@ -353,6 +356,275 @@ func TestLoggerIsHandlingContext(t *testing.T) {
 	}
 	if len(h.handledRecords) != 1 {
 		t.Errorf("expected 1 record logged when debug is enabled in ctx, got %d", len(h.handledRecords))
+	}
+}
+
+type mockResettableHandler struct {
+	mockHandler
+	resetCount int
+}
+
+func (m *mockResettableHandler) Reset(_ context.Context) error {
+	m.resetCount++
+	m.records = nil
+	return nil
+}
+
+type mockResettableProcessor struct {
+	resetCount int
+	tag        string
+}
+
+func (m *mockResettableProcessor) Process(r monogo.Record) monogo.Record {
+	if r.Extra == nil {
+		r.Extra = make(map[string]interface{})
+	}
+	r.Extra["tag"] = m.tag
+	return r
+}
+
+func (m *mockResettableProcessor) Reset(_ context.Context) error {
+	m.resetCount++
+	m.tag = "reset"
+	return nil
+}
+
+func TestLoggerReset_CascadesToHandlersAndProcessors(t *testing.T) {
+	rh1 := &mockResettableHandler{mockHandler: mockHandler{minLevel: monogo.DEBUG}}
+	rh2 := &mockResettableHandler{mockHandler: mockHandler{minLevel: monogo.DEBUG}}
+	plainH := &mockHandler{minLevel: monogo.DEBUG}
+
+	rp := &mockResettableProcessor{tag: "initial"}
+	plainP := monogo.ProcessorFunc(func(r monogo.Record) monogo.Record { return r })
+
+	logger := monogo.New("reset-test", []monogo.Handler{rh1, plainH, rh2}, []monogo.Processor{rp, plainP})
+
+	ctx := context.Background()
+	_ = logger.Info(ctx, "before reset")
+
+	if rh1.resetCount != 0 || rh2.resetCount != 0 || rp.resetCount != 0 {
+		t.Fatalf("expected 0 resets before calling Reset()")
+	}
+
+	// Call Reset on Logger
+	if err := logger.Reset(ctx); err != nil {
+		t.Fatalf("unexpected error from logger.Reset: %v", err)
+	}
+
+	if rh1.resetCount != 1 {
+		t.Errorf("expected rh1 resetCount=1, got %d", rh1.resetCount)
+	}
+	if rh2.resetCount != 1 {
+		t.Errorf("expected rh2 resetCount=1, got %d", rh2.resetCount)
+	}
+	if rp.resetCount != 1 {
+		t.Errorf("expected rp resetCount=1, got %d", rp.resetCount)
+	}
+	if rp.tag != "reset" {
+		t.Errorf("expected rp.tag to be 'reset', got %s", rp.tag)
+	}
+
+	// Verify that rh1's records slice was cleared
+	if len(rh1.records) != 0 {
+		t.Errorf("expected rh1 records to be cleared after reset, got %d", len(rh1.records))
+	}
+}
+
+func TestLoggerReset_EmptyLoggerDoesNotPanic(t *testing.T) {
+	emptyLogger := monogo.New("empty", nil, nil)
+	// Should not panic or error
+	if err := emptyLogger.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from emptyLogger.Reset: %v", err)
+	}
+}
+
+func TestLoggerImplementsResettable(t *testing.T) {
+	var _ monogo.Resettable = (*monogo.Logger)(nil)
+	l := monogo.New("test", nil, nil)
+	var r monogo.Resettable = l
+	if err := r.Reset(context.Background()); err != nil {
+		t.Fatalf("unexpected error from r.Reset: %v", err)
+	}
+}
+
+type blockingResettableHandler struct {
+	mu           sync.Mutex
+	records      []monogo.Record
+	handleBlock  chan struct{}
+	handleStart  chan struct{}
+	resetCalled  bool
+}
+
+func (b *blockingResettableHandler) IsHandling(_ context.Context, level monogo.Level) bool {
+	return true
+}
+
+func (b *blockingResettableHandler) Handle(ctx context.Context, record monogo.Record) error {
+	if b.handleStart != nil {
+		select {
+		case b.handleStart <- struct{}{}:
+		default:
+		}
+	}
+	if b.handleBlock != nil {
+		<-b.handleBlock
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.records = append(b.records, record)
+	return nil
+}
+
+func (b *blockingResettableHandler) Close(ctx context.Context) error {
+	return nil
+}
+
+func (b *blockingResettableHandler) Reset(_ context.Context) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.resetCalled = true
+	b.records = nil
+	return nil
+}
+
+func TestLoggerReset_LifecycleBarrier(t *testing.T) {
+	h := &blockingResettableHandler{
+		handleBlock: make(chan struct{}),
+		handleStart: make(chan struct{}, 1),
+	}
+
+	logger := monogo.New("barrier-test", []monogo.Handler{h}, nil)
+	ctx := context.Background()
+
+	// Launch in-flight Log call
+	logDone := make(chan error, 1)
+	go func() {
+		logDone <- logger.Info(ctx, "in-flight log")
+	}()
+
+	// Wait until Handle has started executing
+	<-h.handleStart
+
+	// Launch Reset in separate goroutine; it should block until in-flight Log finishes
+	resetDone := make(chan struct{})
+	go func() {
+		_ = logger.Reset(ctx)
+		close(resetDone)
+	}()
+
+	// Ensure Reset has not completed yet
+	select {
+	case <-resetDone:
+		t.Fatalf("Reset() should be blocked by in-flight Log()")
+	case <-time.After(30 * time.Millisecond):
+		// Expected: Reset is waiting on cycleMu
+	}
+
+	// Release in-flight Log
+	close(h.handleBlock)
+
+	if err := <-logDone; err != nil {
+		t.Fatalf("Log returned error: %v", err)
+	}
+
+	// Reset should now complete
+	select {
+	case <-resetDone:
+		// Succeeded
+	case <-time.After(1 * time.Second):
+		t.Fatalf("Reset() timed out waiting for cycleMu")
+	}
+
+	// After Reset completes, records should have been cleared by Reset()
+	h.mu.Lock()
+	recordCount := len(h.records)
+	resetWasCalled := h.resetCalled
+	h.mu.Unlock()
+
+	if !resetWasCalled {
+		t.Errorf("expected Reset() to have been called on handler")
+	}
+	if recordCount != 0 {
+		t.Errorf("expected 0 records after in-flight log completed and Reset ran, got %d", recordCount)
+	}
+}
+
+type errorResettableHandler struct {
+	mockHandler
+	err error
+}
+
+func (e *errorResettableHandler) Reset(_ context.Context) error {
+	return e.err
+}
+
+func TestLoggerReset_PropagatesError(t *testing.T) {
+	expectedErr := fmt.Errorf("reset failed")
+	h := &errorResettableHandler{err: expectedErr}
+	logger := monogo.New("err-test", []monogo.Handler{h}, nil)
+
+	err := logger.Reset(context.Background())
+	if err != expectedErr {
+		t.Fatalf("expected %v, got %v", expectedErr, err)
+	}
+}
+
+func TestLoggerReset_LifecycleBarrier_DerivedLoggers(t *testing.T) {
+	h := &blockingResettableHandler{
+		handleBlock: make(chan struct{}),
+		handleStart: make(chan struct{}, 1),
+	}
+
+	parent := monogo.New("parent", []monogo.Handler{h}, nil)
+	child := parent.With(map[string]interface{}{"request_id": 42}).WithChannel("child-worker")
+	ctx := context.Background()
+
+	// Launch in-flight Log call on child logger
+	logDone := make(chan error, 1)
+	go func() {
+		logDone <- child.Info(ctx, "in-flight child log")
+	}()
+
+	// Wait until child's Handle has started executing
+	<-h.handleStart
+
+	// Launch Reset on parent logger in separate goroutine; it should block because child shares cycleMu
+	resetDone := make(chan struct{})
+	go func() {
+		_ = parent.Reset(ctx)
+		close(resetDone)
+	}()
+
+	// Ensure parent.Reset has not completed yet
+	select {
+	case <-resetDone:
+		t.Fatalf("parent.Reset() should be blocked by in-flight child Log()")
+	case <-time.After(30 * time.Millisecond):
+		// Expected: parent.Reset is waiting on shared cycleMu
+	}
+
+	// Release in-flight child Log
+	close(h.handleBlock)
+
+	if err := <-logDone; err != nil {
+		t.Fatalf("child Log returned error: %v", err)
+	}
+
+	// parent.Reset should now complete
+	select {
+	case <-resetDone:
+		// Succeeded
+	case <-time.After(1 * time.Second):
+		t.Fatalf("parent.Reset() timed out waiting for shared cycleMu")
+	}
+
+	// Records should have been cleared by parent.Reset()
+	h.mu.Lock()
+	recordCount := len(h.records)
+	h.mu.Unlock()
+
+	if recordCount != 0 {
+		t.Errorf("expected 0 records after child log completed and parent Reset ran, got %d", recordCount)
 	}
 }
 

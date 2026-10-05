@@ -15,6 +15,8 @@ type BaseHandler struct {
 	processors []monogo.Processor
 }
 
+var _ monogo.Resettable = (*BaseHandler)(nil)
+
 type options struct {
 	bubble              bool
 	formatter           monogo.Formatter
@@ -26,6 +28,7 @@ type options struct {
 	dedupKeyFunc        func(monogo.Record) string
 	dedupStore          DeduplicationStore
 	whatFailureCallback func(error, monogo.Handler)
+	resetErrorCallback  func(error)
 }
 
 func defaultOptions() options {
@@ -67,6 +70,13 @@ func WithProcessor(processors ...monogo.Processor) Option {
 // WithProcessors is an alias for WithProcessor to configure multiple processors at construction time.
 func WithProcessors(processors ...monogo.Processor) Option {
 	return WithProcessor(processors...)
+}
+
+// WithResetErrorCallback registers a callback invoked if an error occurs during Reset() (e.g. flushing a buffer).
+func WithResetErrorCallback(fn func(error)) Option {
+	return func(o *options) {
+		o.resetErrorCallback = fn
+	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.
@@ -127,4 +137,20 @@ func (b *BaseHandler) ProcessRecord(record monogo.Record) monogo.Record {
 		record = p.Process(record)
 	}
 	return record
+}
+
+// Reset resets all per-handler processors that implement monogo.Resettable.
+func (b *BaseHandler) Reset(ctx context.Context) error {
+	if b == nil {
+		return nil
+	}
+	var lastErr error
+	for _, p := range b.processors {
+		if r, ok := p.(monogo.Resettable); ok {
+			if err := r.Reset(ctx); err != nil {
+				lastErr = err
+			}
+		}
+	}
+	return lastErr
 }
