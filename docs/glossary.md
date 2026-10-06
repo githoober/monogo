@@ -37,6 +37,7 @@ A function or component that enriches `Record.Extra` with additional system meta
 - `UID`: Unique invocation request ID (Monolog `UidProcessor`).
 - `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
 - `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
+- `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
 - `Env` / `EnvMap`: Environment variables (Monogo extension for containerized/cloud environments).
 
 ### Formatter

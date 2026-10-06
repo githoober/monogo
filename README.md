@@ -13,7 +13,8 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
 - **Resettable Lifecycle**: Modeled after Monolog's `ResettableInterface`, `monogo.Resettable` (`Reset(ctx context.Context) error`) allows loggers, handlers, and processors to reset buffers, re-arm triggers, clear deduplication stores, and regenerate request UIDs between jobs in long-running services.
-- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Environment variables, Memory stats, Tags, Unique request ID/UID).
+- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Web / HTTP request info, Environment variables, Memory stats, Tags, Unique request ID/UID).
+- **HTTP Middleware**: Standard `net/http` middleware with automatic `X-Request-ID` generation, ambient context binding, latency tracking, and request completion logging.
 - **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
@@ -286,6 +287,7 @@ Processors enrich log records with contextual and system diagnostic metadata bef
 - **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset(ctx)` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
 - **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
 - **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
+- **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` (Monolog `WebProcessor`).
 
 ### Monogo Extensions
 - **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
@@ -553,6 +555,49 @@ server := &http.Server{
 
 // 2. Or obtain an io.Writer for third-party libraries
 writer := stdlogadapter.NewWriter(ctx, logger, monogo.INFO)
+```
+
+## HTTP Middleware & WebProcessor
+
+Monogo includes an idiomatic Go `net/http` middleware (`middleware.HTTP`) and a Monolog-compatible `processor.Web`:
+- **`middleware.HTTP`**: Intercepts requests, automatically assigns/propagates `X-Request-ID`, extracts request metadata into ambient context via `processor.WithHTTPRequest`, records response status codes, latency, and bytes written, and logs request completions.
+- **`processor.Web`**: Injects request attributes (`url`, `ip`, `http_method`, `server`, `referrer`, `user_agent`) into `Record.Extra` from request context.
+
+```go
+package main
+
+import (
+	"context"
+	"net/http"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/middleware"
+	"github.com/githoober/monogo/processor"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Logger configured with WebProcessor to enrich log records with HTTP metadata
+	logger := monogo.New("api",
+		[]monogo.Handler{handler.NewStream(os.Stdout, monogo.DEBUG)},
+		[]monogo.Processor{processor.Web()},
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
+		// Log from inside handler; ambient request_id and HTTP attributes are automatically attached!
+		logger.Info(r.Context(), "Greeting user", map[string]interface{}{"user": "alice"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Hello, World!"))
+	})
+
+	// Wrap entire router with Monogo HTTP middleware
+	httpHandler := middleware.HTTP(logger)(mux)
+	_ = http.ListenAndServe(":8080", httpHandler)
+}
 ```
 
 ## Documentation

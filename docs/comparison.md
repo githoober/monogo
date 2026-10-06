@@ -77,6 +77,7 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`processor.ProcessId`](../processor/processor.go) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. |
 | [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables instead of git CLI execution. |
 | [`processor.Tag`](../processor/processor.go) | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |
+| [`processor.Web`](../processor/web.go) | `Monolog\Processor\WebProcessor` | Injects HTTP request attributes (URL, client IP, method, server, referrer, user agent) into `Record.Extra` from request context or `http.Request`. |
 
 ---
 
@@ -143,6 +144,11 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
   - `formatter.JSON` supports two batch formatting modes via `WithBatchMode`:
     - `BatchModeNewlines` (default): Formats batches as newline-delimited JSON (NDJSON).
     - `BatchModeJSON`: Formats the entire batch as a single JSON array (`[...]`).
+
+### 10. Native `net/http` Middleware
+- **Status:** **New in Monogo** *(Go web ecosystem standard)*.
+- **What it does:**
+  - `middleware.HTTP(logger)` provides a standard `func(http.Handler) http.Handler` middleware that assigns/preserves `X-Request-ID`, binds ambient request metadata via `processor.WithHTTPRequest`, records response status codes and bytes written, measures duration, and logs completed requests.
 
 ---
 
