@@ -18,6 +18,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
   - `zerolog` Backend (use `zerolog` as a Monogo output handler).
+  - Standard Library `*log.Logger` & `io.Writer` Bridge (route `http.Server.ErrorLog` and legacy dependencies into Monogo).
 
 ## Installation
 
@@ -524,6 +525,34 @@ zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 
 logger := monogo.New("api", []monogo.Handler{zh}, nil)
 logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "postgres"})
+```
+
+## Using Standard Library Bridge (*log.Logger & io.Writer)
+
+To integrate Monogo with standard library servers (such as `http.Server.ErrorLog`), database drivers, or legacy Go packages that write to an `io.Writer` or standard library `*log.Logger`, the `adapter/stdlogadapter` package routes incoming log lines into a `*monogo.Logger` at a designated level:
+
+```go
+import (
+	"context"
+	"net/http"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/adapter/stdlogadapter"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+logger := monogo.New("server", []monogo.Handler{handler.NewStream(os.Stdout, monogo.INFO)}, nil)
+
+// 1. Pass standard library *log.Logger to http.Server
+server := &http.Server{
+	Addr:     ":8080",
+	ErrorLog: stdlogadapter.NewStdLogger(ctx, logger, monogo.ERROR, "[http] ", 0),
+}
+
+// 2. Or obtain an io.Writer for third-party libraries
+writer := stdlogadapter.NewWriter(ctx, logger, monogo.INFO)
 ```
 
 ## Documentation

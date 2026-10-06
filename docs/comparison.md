@@ -109,6 +109,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
     - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
     - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
     - `adapter/zerologadapter.New`: Routes Monogo log records to `rs/zerolog`.
+    - `adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
   - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 
 ### 5. Concurrent Goroutine Safety & Copy-On-Write Isolation
