@@ -8,7 +8,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Sampling, Group, WhatFailureGroup, Test, Null.
+- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Sampling, Socket, Group, WhatFailureGroup, Test, Null.
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
@@ -219,6 +219,37 @@ logger := monogo.New("app", []monogo.Handler{samplingHandler}, nil)
 
 logger.Debug(ctx, "High volume trace")  // Emitted with 10% probability
 logger.Error(ctx, "Critical failure")    // Always emitted (bypasses sampling)
+```
+
+## Socket Handler
+
+Modeled after PHP Monolog's `SocketHandler`, the `Socket` handler writes formatted log records over network sockets (TCP, UDP, or Unix domain sockets). It features automatic reconnection, customizable dial/write timeouts, and `Resettable` lifecycle support:
+
+```go
+import (
+	"context"
+	"time"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/formatter"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+// Stream logs over TCP to Logstash / remote syslog / aggregator
+socketHandler := handler.NewSocket(
+	"tcp",
+	"10.0.0.50:5000",
+	monogo.INFO,
+	handler.WithFormatter(formatter.NewJSON("")),
+	handler.WithWriteTimeout(3*time.Second),
+	handler.WithDialTimeout(5*time.Second),
+)
+defer socketHandler.Close(ctx)
+
+logger := monogo.New("network-app", []monogo.Handler{socketHandler}, nil)
+logger.Info(ctx, "Log streaming over TCP socket")
 ```
 
 ## Handler Bubbling

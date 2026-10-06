@@ -54,6 +54,7 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`handler.Deduplication`](../handler/deduplication.go) | `Monolog\Handler\DeduplicationHandler` | Adapted counterpart to `DeduplicationHandler`. Provides sliding time-window duplicate suppression, adapted to use a thread-safe in-memory cache with auto-pruning rather than Monolog's file-based store. |
 | [`handler.WhatFailureGroup`](../handler/what_failure_group.go) | `Monolog\Handler\WhatFailureGroupHandler` | Adapted counterpart to `WhatFailureGroupHandler`. Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics (analogous to catching `Throwable` in PHP). |
 | [`handler.Sampling`](../handler/sampling.go) | `Monolog\Handler\SamplingHandler` | Adapted counterpart to `SamplingHandler`. Downsamples records based on a 1-in-N sampling factor, supporting custom sampler strategies and level thresholds to bypass sampling for critical logs. |
+| [`handler.Socket`](../handler/socket.go) | `Monolog\Handler\SocketHandler` | Adapted counterpart to `SocketHandler`. Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets) with automatic reconnection, timeouts, and `Resettable` lifecycle support. |
 
 ---
 

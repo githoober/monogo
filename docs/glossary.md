@@ -27,6 +27,7 @@ A destination component responsible for receiving a `Record` and outputting or f
 - `Deduplication`: Suppresses duplicate log records occurring within a time window.
 - `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
 - `Sampling`: Downsamples log records based on a 1-in-N factor with optional bypass threshold for critical logs.
+- `Socket`: Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets).
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:

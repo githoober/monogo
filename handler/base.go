@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"net"
+	"time"
 
 	"github.com/githoober/monogo"
 )
@@ -31,6 +33,9 @@ type options struct {
 	resetErrorCallback  func(error)
 	sampler             func() bool
 	samplingThreshold   *monogo.Level
+	dialTimeout         time.Duration
+	writeTimeout        time.Duration
+	dialer              func(context.Context, string, string) (net.Conn, error)
 }
 
 func defaultOptions() options {
@@ -92,6 +97,27 @@ func WithSampler(sampler func() bool) Option {
 func WithSamplingThreshold(level monogo.Level) Option {
 	return func(o *options) {
 		o.samplingThreshold = &level
+	}
+}
+
+// WithDialTimeout configures connection dial timeout for network handlers.
+func WithDialTimeout(d time.Duration) Option {
+	return func(o *options) {
+		o.dialTimeout = d
+	}
+}
+
+// WithWriteTimeout configures network write timeout for network handlers.
+func WithWriteTimeout(d time.Duration) Option {
+	return func(o *options) {
+		o.writeTimeout = d
+	}
+}
+
+// WithDialer configures a custom connection dialer for network handlers.
+func WithDialer(fn func(ctx context.Context, network, address string) (net.Conn, error)) Option {
+	return func(o *options) {
+		o.dialer = fn
 	}
 }
 
