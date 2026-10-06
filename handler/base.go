@@ -29,6 +29,8 @@ type options struct {
 	dedupStore          DeduplicationStore
 	whatFailureCallback func(error, monogo.Handler)
 	resetErrorCallback  func(error)
+	sampler             func() bool
+	samplingThreshold   *monogo.Level
 }
 
 func defaultOptions() options {
@@ -76,6 +78,20 @@ func WithProcessors(processors ...monogo.Processor) Option {
 func WithResetErrorCallback(fn func(error)) Option {
 	return func(o *options) {
 		o.resetErrorCallback = fn
+	}
+}
+
+// WithSampler configures a custom sampling function (returns true if record should be emitted).
+func WithSampler(sampler func() bool) Option {
+	return func(o *options) {
+		o.sampler = sampler
+	}
+}
+
+// WithSamplingThreshold sets a level at or above which records bypass sampling and are always emitted.
+func WithSamplingThreshold(level monogo.Level) Option {
+	return func(o *options) {
+		o.samplingThreshold = &level
 	}
 }
 

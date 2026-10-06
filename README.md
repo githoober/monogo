@@ -8,7 +8,7 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Group, WhatFailureGroup, Test, Null.
+- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Sampling, Group, WhatFailureGroup, Test, Null.
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
@@ -187,6 +187,36 @@ logger := monogo.New("app", []monogo.Handler{primaryHandler, resilientGroup}, ni
 
 // Even if external services time out, panic, or fail, primaryHandler receives the log safely
 logger.Error(ctx, "Payment transaction failed")
+```
+
+## Sampling Handler
+
+Inspired by PHP Monolog's `SamplingHandler`, the `Sampling` handler downsamples high-throughput log traffic based on a 1-in-N sampling factor (e.g., factor `10` emits approximately 10% of records). To prevent losing critical operational errors, `handler.WithSamplingThreshold` allows logs at or above a specified severity level (e.g. `ERROR`) to completely bypass sampling:
+
+```go
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+stdoutHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+
+// Sample DEBUG and INFO logs 1-in-10 (10%), but always emit ERROR+ logs (100%)
+samplingHandler := handler.NewSampling(
+	stdoutHandler,
+	10,
+	handler.WithSamplingThreshold(monogo.ERROR),
+)
+
+logger := monogo.New("app", []monogo.Handler{samplingHandler}, nil)
+
+logger.Debug(ctx, "High volume trace")  // Emitted with 10% probability
+logger.Error(ctx, "Critical failure")    // Always emitted (bypasses sampling)
 ```
 
 ## Handler Bubbling
