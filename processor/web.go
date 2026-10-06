@@ -21,13 +21,78 @@ type HTTPRequestData struct {
 	UserAgent string `json:"user_agent,omitempty"`
 }
 
+// RequestOption configures HTTP request data extraction.
+type RequestOption func(*requestOptions)
+
+type requestOptions struct {
+	trustedProxyFunc func(peerIP net.IP) bool
+}
+
+// WithTrustedProxies configures trusted proxy IP addresses or CIDR blocks.
+// Forwarded-IP headers (X-Forwarded-For, X-Real-IP) are only honored if the
+// immediate peer (RemoteAddr) matches a configured trusted proxy.
+func WithTrustedProxies(proxies ...string) RequestOption {
+	var subnets []*net.IPNet
+	var ips []net.IP
+	for _, p := range proxies {
+		p = strings.TrimSpace(p)
+		if strings.Contains(p, "/") {
+			if _, cidr, err := net.ParseCIDR(p); err == nil {
+				subnets = append(subnets, cidr)
+			}
+		} else {
+			if ip := net.ParseIP(p); ip != nil {
+				ips = append(ips, ip)
+			}
+		}
+	}
+	return func(o *requestOptions) {
+		prev := o.trustedProxyFunc
+		o.trustedProxyFunc = func(peerIP net.IP) bool {
+			if peerIP == nil {
+				return false
+			}
+			if prev != nil && prev(peerIP) {
+				return true
+			}
+			for _, ip := range ips {
+				if ip.Equal(peerIP) {
+					return true
+				}
+			}
+			for _, subnet := range subnets {
+				if subnet.Contains(peerIP) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+}
+
+// WithTrustedProxyFunc configures a custom predicate function to determine if a peer IP is a trusted proxy.
+func WithTrustedProxyFunc(fn func(peerIP net.IP) bool) RequestOption {
+	return func(o *requestOptions) {
+		o.trustedProxyFunc = fn
+	}
+}
+
 // ExtractHTTPRequestData parses standard WebProcessor attributes from an *http.Request.
-func ExtractHTTPRequestData(req *http.Request) HTTPRequestData {
+// By default, it derives the client IP strictly from req.RemoteAddr to prevent header spoofing.
+// Forwarded headers (X-Forwarded-For, X-Real-IP) are only parsed when trusted proxies are configured.
+func ExtractHTTPRequestData(req *http.Request, opts ...RequestOption) HTTPRequestData {
 	if req == nil {
 		return HTTPRequestData{}
 	}
 
-	ip := clientIP(req)
+	var ro requestOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&ro)
+		}
+	}
+
+	ip := clientIP(req, ro)
 	urlStr := ""
 	if req.URL != nil {
 		urlStr = req.URL.String()
@@ -44,11 +109,11 @@ func ExtractHTTPRequestData(req *http.Request) HTTPRequestData {
 }
 
 // WithHTTPRequest attaches HTTP request metadata to ctx for extraction by WebProcessor.
-func WithHTTPRequest(ctx context.Context, req *http.Request) context.Context {
+func WithHTTPRequest(ctx context.Context, req *http.Request, opts ...RequestOption) context.Context {
 	if req == nil {
 		return ctx
 	}
-	data := ExtractHTTPRequestData(req)
+	data := ExtractHTTPRequestData(req, opts...)
 	ctx = context.WithValue(ctx, httpContextKey{}, data)
 	ctx = monogo.WithContext(ctx, map[string]interface{}{
 		"_monogo_web_url":        data.URL,
@@ -61,24 +126,43 @@ func WithHTTPRequest(ctx context.Context, req *http.Request) context.Context {
 	return ctx
 }
 
-func clientIP(req *http.Request) string {
+func parsePeerHostAndIP(remoteAddr string) (string, net.IP) {
+	if remoteAddr == "" {
+		return "", nil
+	}
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	return host, net.ParseIP(host)
+}
+
+func clientIP(req *http.Request, opts requestOptions) string {
+	peerHost, peerIP := parsePeerHostAndIP(req.RemoteAddr)
+
+	// If no trusted proxy matcher is configured or the peer is not a trusted proxy,
+	// default strictly to RemoteAddr to prevent header spoofing from untrusted callers.
+	if opts.trustedProxyFunc == nil || peerIP == nil || !opts.trustedProxyFunc(peerIP) {
+		return peerHost
+	}
+
+	// Peer is a trusted proxy: inspect forwarding headers.
 	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			if ip != "" {
-				return ip
+		for _, part := range parts {
+			ipStr := strings.TrimSpace(part)
+			if ipStr != "" {
+				return ipStr
 			}
 		}
 	}
 	if xri := req.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+		if ipStr := strings.TrimSpace(xri); ipStr != "" {
+			return ipStr
+		}
 	}
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err == nil && host != "" {
-		return host
-	}
-	return req.RemoteAddr
+
+	return peerHost
 }
 
 // WebOption configures WebProcessor behavior.
@@ -86,6 +170,15 @@ type WebOption func(*webOptions)
 
 type webOptions struct {
 	extraKey string
+	reqOpts  requestOptions
+}
+
+// WithWebTrustedProxies configures trusted proxies for WebFromRequest.
+func WithWebTrustedProxies(proxies ...string) WebOption {
+	ro := WithTrustedProxies(proxies...)
+	return func(o *webOptions) {
+		ro(&o.reqOpts)
+	}
 }
 
 // WithWebExtraKey nests HTTP fields under a specific key in Extra (e.g. Extra["http"]).
@@ -168,13 +261,13 @@ func Web(opts ...WebOption) monogo.ProcessorFunc {
 
 // WebFromRequest creates a processor pre-bound to an explicit *http.Request.
 func WebFromRequest(req *http.Request, opts ...WebOption) monogo.ProcessorFunc {
-	data := ExtractHTTPRequestData(req)
 	o := webOptions{}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&o)
 		}
 	}
+	data := ExtractHTTPRequestData(req, func(r *requestOptions) { *r = o.reqOpts })
 
 	return func(r monogo.Record) monogo.Record {
 		if r.Extra == nil {

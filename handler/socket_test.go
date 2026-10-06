@@ -239,6 +239,33 @@ func TestSocketHandler_CustomDialerAndReset(t *testing.T) {
 	}
 }
 
+func TestSocketHandler_CustomDialerTimeout(t *testing.T) {
+	ctx := t.Context()
+	serverConn, clientConn := net.Pipe()
+	defer func() { _ = serverConn.Close() }()
+	defer func() { _ = clientConn.Close() }()
+
+	hadDeadline := false
+	sockH := handler.NewSocket("custom", "pipe", monogo.DEBUG,
+		handler.WithDialTimeout(2*time.Second),
+		handler.WithDialer(func(dCtx context.Context, _, _ string) (net.Conn, error) {
+			_, hadDeadline = dCtx.Deadline()
+			return clientConn, nil
+		}),
+	)
+
+	go func() {
+		buf := make([]byte, 1024)
+		_, _ = serverConn.Read(buf)
+	}()
+
+	_ = sockH.Handle(ctx, monogo.Record{Message: "timeout test", Level: monogo.INFO})
+	if !hadDeadline {
+		t.Error("expected custom dialer to receive context with deadline from WithDialTimeout")
+	}
+	_ = sockH.Close(ctx)
+}
+
 func TestSocketHandler_DialError(t *testing.T) {
 	ctx := t.Context()
 	sockH := handler.NewSocket("custom", "fail", monogo.DEBUG,

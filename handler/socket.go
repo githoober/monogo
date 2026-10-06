@@ -59,7 +59,6 @@ func NewSocket(network, address string, minLevel monogo.Level, opts ...Option) *
 	if dialer == nil {
 		dialer = func(ctx context.Context, netw, addr string) (net.Conn, error) {
 			var d net.Dialer
-			d.Timeout = dialTimeout
 			return d.DialContext(ctx, netw, addr)
 		}
 	}
@@ -83,7 +82,13 @@ func (s *Socket) connect(ctx context.Context) error {
 	if s.conn != nil {
 		return nil
 	}
-	conn, err := s.dialer(ctx, s.network, s.address)
+	dialCtx := ctx
+	var cancel context.CancelFunc
+	if s.dialTimeout > 0 {
+		dialCtx, cancel = context.WithTimeout(ctx, s.dialTimeout)
+		defer cancel()
+	}
+	conn, err := s.dialer(dialCtx, s.network, s.address)
 	if err != nil {
 		return fmt.Errorf("monogo socket dial %s://%s failed: %w", s.network, s.address, err)
 	}
