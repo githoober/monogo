@@ -2,6 +2,7 @@ package monogo
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 )
@@ -184,6 +185,9 @@ func (l *Logger) Log(ctx context.Context, level Level, msg string, ctxMap ...map
 	for _, h := range handlers {
 		if h.IsHandling(ctx, level) {
 			if err := h.Handle(ctx, record); err != nil {
+				if errors.Is(err, ErrNotHandled) {
+					continue
+				}
 				return err
 			}
 			if bubbler, ok := h.(Bubbler); ok && !bubbler.Bubble() {

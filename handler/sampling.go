@@ -84,15 +84,25 @@ func (s *Sampling) shouldSample(record monogo.Record) bool {
 }
 
 // Handle evaluates the sampling decision; if sampled, applies handler processors and forwards to wrapped handler.
+// If the record is rejected by sampling, it returns monogo.ErrNotHandled so bubbling continues down the logger stack.
 func (s *Sampling) Handle(ctx context.Context, record monogo.Record) error {
 	if !s.IsHandling(ctx, record.Level) {
-		return nil
+		return monogo.ErrNotHandled
 	}
 	if !s.shouldSample(record) {
-		return nil
+		return monogo.ErrNotHandled
 	}
 	record = s.ProcessRecord(record)
 	return s.handler.Handle(ctx, record)
+}
+
+// Bubble returns whether the handler allows bubbling down the stack.
+// If the wrapped handler is a Bubbler, it respects both settings.
+func (s *Sampling) Bubble() bool {
+	if b, ok := s.handler.(monogo.Bubbler); ok {
+		return s.BaseHandler.Bubble() && b.Bubble()
+	}
+	return s.BaseHandler.Bubble()
 }
 
 // HandleBatch filters the batch according to sampling rules and forwards surviving records.

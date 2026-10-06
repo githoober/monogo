@@ -2,9 +2,11 @@ package middleware_test
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/githoober/monogo"
@@ -322,6 +324,150 @@ func TestHTTPMiddleware_WithTrustedProxyFunc(t *testing.T) {
 	records := testH.Records()
 	if len(records) != 1 || records[0].Extra["ip"] != "203.0.113.77" {
 		t.Fatalf("expected trusted loopback proxy to resolve XFF IP, got: %v", records[0].Extra["ip"])
+	}
+}
+
+func TestHTTPMiddleware_CapabilityFiltering(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	l := monogo.New("http", []monogo.Handler{testH}, nil)
+
+	// httptest.ResponseRecorder implements http.Flusher, but NOT http.Hijacker, http.Pusher, or io.ReaderFrom
+	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := w.(http.Hijacker); ok {
+			t.Errorf("expected wrapped httptest.ResponseRecorder NOT to implement http.Hijacker")
+		}
+		if _, ok := w.(http.Pusher); ok {
+			t.Errorf("expected wrapped httptest.ResponseRecorder NOT to implement http.Pusher")
+		}
+		if _, ok := w.(io.ReaderFrom); ok {
+			t.Errorf("expected wrapped httptest.ResponseRecorder NOT to implement io.ReaderFrom")
+		}
+		if _, ok := w.(http.Flusher); !ok {
+			t.Errorf("expected wrapped httptest.ResponseRecorder to implement http.Flusher")
+		}
+	})
+
+	mw := middleware.HTTP(l)
+	mw(handlerFunc).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+}
+
+func TestHTTPMiddleware_FlushCommitsStatus(t *testing.T) {
+	// Case 1: Flush followed by WriteHeader(500) -> logs 200
+	{
+		testH := handler.NewTest(monogo.DEBUG)
+		l := monogo.New("http", []monogo.Handler{testH}, nil)
+		handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.(http.Flusher).Flush()
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/flush", nil)
+		middleware.HTTP(l)(handlerFunc).ServeHTTP(w, req)
+
+		records := testH.Records()
+		if len(records) != 1 || records[0].Context["status"] != http.StatusOK {
+			t.Fatalf("expected logged status 200 after Flush, got %v", records[0].Context["status"])
+		}
+	}
+
+	// Case 2: Flush followed by panic -> logs 200 (since status was committed to client)
+	{
+		testH := handler.NewTest(monogo.DEBUG)
+		l := monogo.New("http", []monogo.Handler{testH}, nil)
+		handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.(http.Flusher).Flush()
+			panic("boom after flush")
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/flush-panic", nil)
+		func() {
+			defer func() {
+				_ = recover()
+			}()
+			middleware.HTTP(l)(handlerFunc).ServeHTTP(w, req)
+		}()
+
+		records := testH.Records()
+		if len(records) != 1 || records[0].Context["status"] != http.StatusOK {
+			t.Fatalf("expected logged status 200 after Flush followed by panic, got %v", records[0].Context["status"])
+		}
+	}
+}
+
+type fullCapabilityWriter struct {
+	http.ResponseWriter
+	flushed    bool
+	hijacked   bool
+	pushed     bool
+	readFrom   bool
+}
+
+func (f *fullCapabilityWriter) Flush() {
+	f.flushed = true
+}
+
+func (f *fullCapabilityWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	f.hijacked = true
+	return nil, nil, nil
+}
+
+func (f *fullCapabilityWriter) Push(target string, opts *http.PushOptions) error {
+	f.pushed = true
+	return nil
+}
+
+func (f *fullCapabilityWriter) ReadFrom(src io.Reader) (int64, error) {
+	f.readFrom = true
+	return io.Copy(f.ResponseWriter, src)
+}
+
+func TestHTTPMiddleware_FullCapabilityWriter(t *testing.T) {
+	testH := handler.NewTest(monogo.DEBUG)
+	l := monogo.New("http", []monogo.Handler{testH}, nil)
+
+	recorder := httptest.NewRecorder()
+	full := &fullCapabilityWriter{ResponseWriter: recorder}
+
+	handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		} else {
+			t.Errorf("expected http.Flusher")
+		}
+
+		if hijacker, ok := w.(http.Hijacker); ok {
+			_, _, _ = hijacker.Hijack()
+		} else {
+			t.Errorf("expected http.Hijacker")
+		}
+
+		if pusher, ok := w.(http.Pusher); ok {
+			_ = pusher.Push("/style.css", nil)
+		} else {
+			t.Errorf("expected http.Pusher")
+		}
+
+		if readerFrom, ok := w.(io.ReaderFrom); ok {
+			_, _ = readerFrom.ReadFrom(strings.NewReader("hello via ReadFrom"))
+		} else {
+			t.Errorf("expected io.ReaderFrom")
+		}
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/all", nil)
+	middleware.HTTP(l)(handlerFunc).ServeHTTP(full, req)
+
+	if !full.flushed {
+		t.Errorf("expected full.flushed to be true")
+	}
+	if !full.hijacked {
+		t.Errorf("expected full.hijacked to be true")
+	}
+	if !full.pushed {
+		t.Errorf("expected full.pushed to be true")
+	}
+	if !full.readFrom {
+		t.Errorf("expected full.readFrom to be true")
 	}
 }
 

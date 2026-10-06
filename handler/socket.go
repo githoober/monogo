@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -96,32 +98,79 @@ func (s *Socket) connect(ctx context.Context) error {
 	return nil
 }
 
-// writeLocked writes bytes to socket with timeout. Attempts one reconnection on failure. Caller must hold s.mu.
+func isDatagram(network string) bool {
+	return strings.HasPrefix(network, "udp") || network == "unixgram"
+}
+
+// writeStream performs a full-write loop over a stream socket connection.
+func (s *Socket) writeStream(p []byte) (int, error) {
+	total := 0
+	for total < len(p) {
+		if s.writeTimeout > 0 {
+			_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
+		}
+		n, err := s.conn.Write(p[total:])
+		total += n
+		if err != nil {
+			return total, err
+		}
+		if n == 0 {
+			return total, io.ErrUnexpectedEOF
+		}
+	}
+	return total, nil
+}
+
+// writeLocked writes bytes to socket with timeout.
+// For stream sockets, it uses a full-write loop. If a failure occurs before any bytes
+// were transmitted, it attempts one reconnect and retry. If a partial write occurred,
+// it avoids reconnect-and-resend to prevent duplicating transmitted record data.
+// For datagram sockets, it attempts a single datagram write.
 func (s *Socket) writeLocked(ctx context.Context, p []byte) error {
 	if err := s.connect(ctx); err != nil {
 		return err
 	}
 
-	if s.writeTimeout > 0 {
-		_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
-	}
-
-	_, err := s.conn.Write(p)
-	if err != nil {
-		// Attempt one reconnect and retry
-		_ = s.conn.Close()
-		s.conn = nil
-		if recErr := s.connect(ctx); recErr != nil {
-			return fmt.Errorf("socket write error: %v, reconnect error: %w", err, recErr)
-		}
+	if isDatagram(s.network) {
 		if s.writeTimeout > 0 {
 			_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
 		}
-		_, err = s.conn.Write(p)
+		_, err := s.conn.Write(p)
 		if err != nil {
 			_ = s.conn.Close()
 			s.conn = nil
-			return fmt.Errorf("socket write retry error: %w", err)
+			if recErr := s.connect(ctx); recErr != nil {
+				return fmt.Errorf("datagram socket write error: %v, reconnect error: %w", err, recErr)
+			}
+			if s.writeTimeout > 0 {
+				_ = s.conn.SetWriteDeadline(time.Now().Add(s.writeTimeout))
+			}
+			if _, retryErr := s.conn.Write(p); retryErr != nil {
+				_ = s.conn.Close()
+				s.conn = nil
+				return fmt.Errorf("datagram socket retry error: %w", retryErr)
+			}
+		}
+		return nil
+	}
+
+	// Stream socket (TCP, Unix domain socket)
+	total, err := s.writeStream(p)
+	if err != nil {
+		_ = s.conn.Close()
+		s.conn = nil
+		if total > 0 {
+			return fmt.Errorf("socket partial write error (%d/%d bytes sent): %w", total, len(p), err)
+		}
+		// Zero bytes sent: safe to reconnect and retry the record
+		if recErr := s.connect(ctx); recErr != nil {
+			return fmt.Errorf("socket write error: %v, reconnect error: %w", err, recErr)
+		}
+		_, retryErr := s.writeStream(p)
+		if retryErr != nil {
+			_ = s.conn.Close()
+			s.conn = nil
+			return fmt.Errorf("socket write retry error: %w", retryErr)
 		}
 	}
 	return nil

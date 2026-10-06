@@ -164,6 +164,30 @@ func TestFilterHandler(t *testing.T) {
 	}
 }
 
+func TestFilterHandler_Bubbling(t *testing.T) {
+	ctx := t.Context()
+	inner := handler.NewTest(monogo.DEBUG)
+	fallback := handler.NewTest(monogo.DEBUG)
+	filterH := handler.NewFilter(inner, monogo.INFO, monogo.WARNING, handler.WithBubble(false))
+
+	if filterH.Bubble() {
+		t.Fatalf("expected Filter.Bubble() to be false")
+	}
+
+	logger := monogo.New("app", []monogo.Handler{filterH, fallback}, nil)
+
+	_ = logger.Debug(ctx, "debug msg") // Filter rejects -> bubbles to fallback
+	_ = logger.Info(ctx, "info msg")   // Filter handles -> stops bubbling
+	_ = logger.Error(ctx, "error msg") // Filter rejects -> bubbles to fallback
+
+	if len(inner.Records()) != 1 || inner.Records()[0].Message != "info msg" {
+		t.Errorf("inner handler expected 1 record (info msg), got: %v", inner.Records())
+	}
+	if len(fallback.Records()) != 2 {
+		t.Errorf("fallback handler expected 2 records (debug and error), got: %d", len(fallback.Records()))
+	}
+}
+
 func TestGroupHandler(t *testing.T) {
 	t1 := handler.NewTest(monogo.DEBUG)
 	t2 := handler.NewTest(monogo.WARNING)

@@ -55,7 +55,7 @@ func TestSamplingHandler_CustomSampler(t *testing.T) {
 	}))
 
 	for i := 0; i < 10; i++ {
-		if err := sh.Handle(ctx, monogo.Record{Message: "msg", Level: monogo.INFO}); err != nil {
+		if err := sh.Handle(ctx, monogo.Record{Message: "msg", Level: monogo.INFO}); err != nil && !errors.Is(err, monogo.ErrNotHandled) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
@@ -77,12 +77,12 @@ func TestSamplingHandler_ThresholdBypass(t *testing.T) {
 		handler.WithSamplingThreshold(monogo.ERROR),
 	)
 
-	// DEBUG and INFO should be dropped by sampler
-	if err := sh.Handle(ctx, monogo.Record{Message: "debug", Level: monogo.DEBUG}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	// DEBUG and INFO should be dropped by sampler (returning ErrNotHandled)
+	if err := sh.Handle(ctx, monogo.Record{Message: "debug", Level: monogo.DEBUG}); !errors.Is(err, monogo.ErrNotHandled) {
+		t.Fatalf("expected ErrNotHandled for dropped debug record, got: %v", err)
 	}
-	if err := sh.Handle(ctx, monogo.Record{Message: "info", Level: monogo.INFO}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := sh.Handle(ctx, monogo.Record{Message: "info", Level: monogo.INFO}); !errors.Is(err, monogo.ErrNotHandled) {
+		t.Fatalf("expected ErrNotHandled for dropped info record, got: %v", err)
 	}
 	// ERROR and CRITICAL should bypass sampler and be emitted
 	if err := sh.Handle(ctx, monogo.Record{Message: "err", Level: monogo.ERROR}); err != nil {
@@ -251,3 +251,36 @@ type samplingFailingHandler struct {
 func (f *samplingFailingHandler) IsHandling(_ context.Context, _ monogo.Level) bool { return true }
 func (f *samplingFailingHandler) Handle(_ context.Context, _ monogo.Record) error    { return f.err }
 func (f *samplingFailingHandler) Close(_ context.Context) error                     { return f.err }
+
+func TestSamplingHandler_Bubbling(t *testing.T) {
+	ctx := t.Context()
+	sampledH := handler.NewTest(monogo.DEBUG)
+	fallbackH := handler.NewTest(monogo.DEBUG)
+
+	// Alternate acceptance: 5 accepted, 5 rejected
+	var state bool
+	sh := handler.NewSampling(sampledH, 2,
+		handler.WithSampler(func() bool {
+			state = !state
+			return state
+		}),
+		handler.WithBubble(false),
+	)
+
+	logger := monogo.New("app", []monogo.Handler{sh, fallbackH}, nil)
+
+	for i := 0; i < 10; i++ {
+		if err := logger.Info(ctx, "msg"); err != nil {
+			t.Fatalf("unexpected logger error: %v", err)
+		}
+	}
+
+	// 5 records sampled into sampledH (and stopped from bubbling because Bubble=false)
+	if len(sampledH.Records()) != 5 {
+		t.Errorf("expected 5 records in sampledH, got %d", len(sampledH.Records()))
+	}
+	// The other 5 records were rejected by sampling and bubbled down to fallbackH!
+	if len(fallbackH.Records()) != 5 {
+		t.Errorf("expected 5 rejected records to bubble to fallbackH, got %d", len(fallbackH.Records()))
+	}
+}

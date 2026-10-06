@@ -15,7 +15,10 @@ type Filter struct {
 	predicate func(monogo.Record) bool
 }
 
-var _ monogo.Resettable = (*Filter)(nil)
+var (
+	_ monogo.Bubbler    = (*Filter)(nil)
+	_ monogo.Resettable = (*Filter)(nil)
+)
 
 // NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional configuration options.
 func NewFilter(handler monogo.Handler, minLevel, maxLevel monogo.Level, opts ...Option) *Filter {
@@ -47,19 +50,29 @@ func (f *Filter) IsHandling(ctx context.Context, level monogo.Level) bool {
 }
 
 // Handle routes handling to inner handler if predicate/level check succeeds.
+// If the record is filtered out, it returns monogo.ErrNotHandled so bubbling can continue.
 func (f *Filter) Handle(ctx context.Context, record monogo.Record) error {
 	if f.predicate != nil {
 		if !f.predicate(record) {
-			return nil
+			return monogo.ErrNotHandled
 		}
 	} else {
 		if record.Level < f.minLevel || record.Level > f.maxLevel {
-			return nil
+			return monogo.ErrNotHandled
 		}
 	}
 
 	record = f.ProcessRecord(record)
 	return f.handler.Handle(ctx, record)
+}
+
+// Bubble returns whether the handler allows bubbling down the stack.
+// If the wrapped handler is a Bubbler, it respects both settings.
+func (f *Filter) Bubble() bool {
+	if b, ok := f.handler.(monogo.Bubbler); ok {
+		return f.BaseHandler.Bubble() && b.Bubble()
+	}
+	return f.BaseHandler.Bubble()
 }
 
 // HandleBatch filters records and forwards matching records to the wrapped handler.

@@ -598,7 +598,6 @@ Monogo includes an idiomatic Go `net/http` middleware (`middleware.HTTP`) and a 
 package main
 
 import (
-	"context"
 	"net/http"
 	"os"
 
@@ -609,8 +608,6 @@ import (
 )
 
 func main() {
-	ctx := context.Background()
-
 	// Logger configured with WebProcessor to enrich log records with HTTP metadata
 	logger := monogo.New("api",
 		[]monogo.Handler{handler.NewStream(os.Stdout, monogo.DEBUG)},
