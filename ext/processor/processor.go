@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/githoober/monogo"
+	coreprocessor "github.com/githoober/monogo/processor"
 )
 
 // Caller adds file, line, and function name information to Extra["caller"].
@@ -207,19 +208,12 @@ func UID(length ...int) *UIDProcessor {
 
 // ProcessId adds the operating system process ID (os.Getpid()) to Extra["pid"].
 func ProcessId() monogo.ProcessorFunc {
-	pid := os.Getpid()
-	return func(r monogo.Record) monogo.Record {
-		if r.Extra == nil {
-			r.Extra = make(map[string]interface{})
-		}
-		r.Extra["pid"] = pid
-		return r
-	}
+	return coreprocessor.ProcessId()
 }
 
 // Process is an alias for ProcessId.
 func Process() monogo.ProcessorFunc {
-	return ProcessId()
+	return coreprocessor.Process()
 }
 
 // GitConfig holds VCS details to inject into log records.
@@ -283,51 +277,13 @@ func Git(configs ...GitConfig) monogo.ProcessorFunc {
 // Env adds specified environment variables to Extra["env"].
 // Variables that are not set in the environment are omitted.
 func Env(keys ...string) monogo.ProcessorFunc {
-	envMap := make(map[string]interface{}, len(keys))
-	for _, k := range keys {
-		if val, exists := os.LookupEnv(k); exists {
-			envMap[k] = val
-		}
-	}
-
-	return func(r monogo.Record) monogo.Record {
-		if r.Extra == nil {
-			r.Extra = make(map[string]interface{})
-		}
-		if existing, ok := r.Extra["env"].(map[string]interface{}); ok {
-			for k, v := range envMap {
-				existing[k] = v
-			}
-		} else {
-			cp := make(map[string]interface{}, len(envMap))
-			for k, v := range envMap {
-				cp[k] = v
-			}
-			r.Extra["env"] = cp
-		}
-		return r
-	}
+	return coreprocessor.Env(keys...)
 }
 
 // EnvMap maps environment variable names directly to top-level attributes in Extra.
 // The map key is the environment variable name (e.g. "APP_ENV");
 // the map value is the target key name in Extra (e.g. "environment").
 func EnvMap(mapping map[string]string) monogo.ProcessorFunc {
-	mapped := make(map[string]interface{}, len(mapping))
-	for envVar, extraKey := range mapping {
-		if val, exists := os.LookupEnv(envVar); exists {
-			mapped[extraKey] = val
-		}
-	}
-
-	return func(r monogo.Record) monogo.Record {
-		if r.Extra == nil {
-			r.Extra = make(map[string]interface{})
-		}
-		for k, v := range mapped {
-			r.Extra[k] = v
-		}
-		return r
-	}
+	return coreprocessor.EnvMap(mapping)
 }
 

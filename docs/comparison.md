@@ -94,7 +94,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
 
 ### 2. `Env` & `EnvMap` Processors
 - **Status:** **New in Monogo** *(Not in PHP Monolog core)*.
-- **What it does:** [`processor.Env(keys...)`](../ext/processor/processor.go) extracts specified environment variables into `Extra["env"]`, while [`processor.EnvMap(mapping)`](../ext/processor/processor.go) maps environment variables directly to top-level keys in `Record.Extra`.
+- **What it does:** [`processor.Env(keys...)`](../processor/env.go) extracts specified environment variables into `Extra["env"]`, while [`processor.EnvMap(mapping)`](../processor/env.go) maps environment variables directly to top-level keys in `Record.Extra`.
 - **Rationale:** In containerized cloud environments (Kubernetes, AWS ECS, GCP Cloud Run), runtime metadata such as `POD_NAME`, `NAMESPACE`, `CLUSTER`, or `DEPLOY_ENV` is injected via environment variables. Providing built-in environment processors enables zero-boilerplate injection of container metadata.
 
 ### 3. First-Class `context.Context` Architecture
@@ -113,7 +113,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
     - `ext/adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
     - `ext/adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
     - `ext/handler`: Extended handlers (`RotatingFile` via `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, etc.).
-    - `ext/processor`: Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`, `Env`).
+    - `ext/processor`: Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`).
     - `ext/middleware`: HTTP server middleware.
   - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 

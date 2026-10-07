@@ -39,6 +39,7 @@ A function or component that enriches `Record.Extra` with additional system meta
 - **Core Processors (`github.com/githoober/monogo/processor`)**:
   - `ProcessId`: OS process ID (`os.Getpid()`, Monolog `ProcessIdProcessor`, aliased as `processor.Process()`).
   - `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
+  - `Env` / `EnvMap`: Environment variables (convenience extension for containerized/cloud environments).
 - **Extension Processors (`github.com/githoober/monogo/ext/processor`)**:
   - `Caller`: File, line, and function caller info (Monolog `IntrospectionProcessor`).
   - `Hostname`: OS hostname (Monolog `HostnameProcessor`).
@@ -46,7 +47,6 @@ A function or component that enriches `Record.Extra` with additional system meta
   - `UID`: Unique invocation request ID (Monolog `UidProcessor`).
   - `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
   - `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
-  - `Env` / `EnvMap`: Environment variables (convenience extension for containerized/cloud environments).
 
 ### Formatter
 Transforms a `Record` into a byte slice or string format for output. Examples:

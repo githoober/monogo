@@ -17,13 +17,13 @@ Monogo is organized into a lightweight **Core module** with **zero third-party d
   - **Ambient Context Values**: Attach contextual fields to Go's `context.Context` via `monogo.WithContext` / `monogo.WithField`.
   - **RFC 5424 Log Levels & Channels**: 8 standard severity levels (`DEBUG` through `EMERGENCY`) and first-class channel segregation.
   - **Core Handlers**: `Stream`, dedicated `JSONStream` (`NewJSONStream` / `NewJSON`), `FingersCrossed`, `Test`, and `Null`.
-  - **Core Processors**: `ProcessId` (`Process`), `Web` (HTTP request metadata extraction).
+  - **Core Processors**: `ProcessId` (`Process`), `Web` (HTTP request metadata extraction), `Env` / `EnvMap` (environment variable extraction).
   - **Core Formatters**: `Line`, `JSON` (NDJSON & JSON Array batch modes), `Logfmt` (canonical key=value format).
   - **Batching & Bubbling**: First-class `BatchHandler`, `BatchFormatter`, `Bubbler`, and `Resettable` lifecycle contracts.
 
 - **Extension Module (`github.com/githoober/monogo/ext`)**:
   - **Advanced Handlers (`ext/handler`)**: `RotatingFile` (rolling log file rotation via `lumberjack.v2`), `Buffer`, `Deduplication`, `Sampling`, `Socket` (TCP/UDP/Unix), `Filter`, `Group`, `WhatFailureGroup`.
-  - **Enriched Processors (`ext/processor`)**: `Caller` (introspection), `Hostname`, `Memory` (runtime stats), `UID` (request IDs), `Git` (build metadata), `Tag`, `Env` / `EnvMap`.
+  - **Enriched Processors (`ext/processor`)**: `Caller` (introspection), `Hostname`, `Memory` (runtime stats), `UID` (request IDs), `Git` (build metadata), `Tag`.
   - **HTTP Middleware (`ext/middleware`)**: Standard `net/http` middleware with `X-Request-ID` generation, latency tracking, and request logging.
   - **Standard Library Adapters (`ext/adapter`)**:
     - `ext/adapter/slogadapter`: Bidirectional `log/slog` backend and bridge.
@@ -359,6 +359,8 @@ Processors enrich log records with contextual and system diagnostic metadata bef
 Zero external dependencies, always available in core:
 - **`processor.ProcessId()`** (or `processor.Process()`): Injects current OS process ID (`os.Getpid()`) into `Extra["pid"]` (Monolog `ProcessIdProcessor`).
 - **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` from context (Monolog `WebProcessor`). Use `processor.WithHTTPRequest(ctx, req)` to attach the HTTP request to the context.
+- **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
+- **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
 
 ### Extension Processors (`github.com/githoober/monogo/ext/processor`)
 
@@ -369,8 +371,6 @@ Extended diagnostic processors in the `ext` module:
 - **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset(ctx)` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
 - **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
 - **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
-- **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
-- **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
 
 ## Batch Processing & Buffering
 

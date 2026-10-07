@@ -11,10 +11,10 @@ The repository is split into two decoupled Go modules:
    - Defines core interfaces (`Handler`, `BatchHandler`, `Bubbler`, `ProcessableHandler`, `Resettable`, `Processor`, `ProcessorFunc`, `Formatter`, `BatchFormatter`) and data structures (`Record`, `Level`).
    - Contains core handlers (`Stream`, dedicated `JSONStream` via `handler.NewJSONStream` / `handler.NewJSON`, `FingersCrossed`, `Test`, `Null`).
    - Contains core formatters (`Line`, `JSON`, `Logfmt`).
-   - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor).
+   - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor, `Env` / `EnvMap` environment variable extractor).
 2. **Extension Module (`github.com/githoober/monogo/ext`)**:
    - Advanced handlers (`RotatingFile` powered by `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, `Filter`, `Group`, `WhatFailureGroup`).
-   - Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`, `Env`, `EnvMap`).
+   - Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`).
    - HTTP middleware (`net/http` request logging, latency tracking, `X-Request-ID`).
    - Pluggable standard library adapters (`ext/adapter/slogadapter`, `ext/adapter/stdlogadapter`).
 
@@ -110,8 +110,8 @@ Monogo implements a two-tier processor architecture:
 2. **Per-Handler Processors (`handler.WithProcessor(p...)`)**: Configured at construction time on individual handlers. Handlers implement `monogo.ProcessableHandler` via `handler.BaseHandler`.
 
 Available processors:
-- **Core (`github.com/githoober/monogo/processor`)**: `ProcessId` (`Process`), `Web` (HTTP metadata extraction).
-- **Extension (`github.com/githoober/monogo/ext/processor`)**: `Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`, `Env`, `EnvMap`.
+- **Core (`github.com/githoober/monogo/processor`)**: `ProcessId` (`Process`), `Web` (HTTP metadata extraction), `Env` / `EnvMap`.
+- **Extension (`github.com/githoober/monogo/ext/processor`)**: `Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`.
 
 When a handler executes its processor pipeline via `ProcessRecord`:
 - If no processors are configured, the record is returned immediately with zero allocations.
