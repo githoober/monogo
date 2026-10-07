@@ -5,11 +5,12 @@
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A flexible, channel-based generic structured logging library for Go inspired by PHP's Monolog. The core library is completely generic and decoupled from specific logging frameworks, allowing pluggable backend adapters like Go standard library `log/slog` and third-party loggers like `zerolog`.
+A flexible, channel-based generic structured logging library for Go inspired by PHP's Monolog. The core library is completely generic and decoupled from specific logging frameworks, featuring zero external dependencies and native bidirectional interoperability with Go standard library `log/slog` and `*log.Logger`.
 
 ## Features
 
 - **Generic & Backend-Agnostic**: Core Monogo logger operates through generic `Handler`, `Processor`, and `Formatter` interfaces without hard dependencies on any specific backend.
+- **Zero Third-Party Dependencies**: Pure standard library implementation with zero external supply-chain dependencies.
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
@@ -23,7 +24,6 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
-  - `zerolog` Backend (use `zerolog` as a Monogo output handler).
   - Standard Library `*log.Logger` & `io.Writer` Bridge (route `http.Server.ErrorLog` and legacy dependencies into Monogo).
 
 ## Installation
@@ -545,26 +545,6 @@ slog.SetDefault(slog.New(slogadapter.NewMonogoSlogBridge(monoLogger)))
 slog.Info("Hello from stdlib slog!", "key", "value")
 ```
 
-## Using zerolog Backend
-
-```go
-import (
-	"context"
-	"os"
-
-	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/zerologadapter"
-	"github.com/rs/zerolog"
-)
-
-ctx := context.Background()
-zLogger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
-
-logger := monogo.New("api", []monogo.Handler{zh}, nil)
-logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "postgres"})
-```
-
 ## Using Standard Library Bridge (*log.Logger & io.Writer)
 
 To integrate Monogo with standard library servers (such as `http.Server.ErrorLog`), database drivers, or legacy Go packages that write to an `io.Writer` or standard library `*log.Logger`, the `adapter/stdlogadapter` package routes incoming log lines into a `*monogo.Logger` at a designated level:
@@ -636,7 +616,7 @@ func main() {
 ## Documentation
 
 - [**Lineage, Adapted Counterparts & Go Innovations**](docs/comparison.md): Exhaustive breakdown of handlers, formatters, and concepts modeled after PHP Monolog core, what is new in Monogo (Go idioms and cloud extensions), and comparative analysis against popular Go loggers.
-- [**Architecture & Design Decisions**](docs/architecture.md): Deep dive into core design choices, pluggable backend adapters (`log/slog`, `zerolog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
+- [**Architecture & Design Decisions**](docs/architecture.md): Deep dive into core design choices, pluggable backend adapters (`log/slog`), ambient context propagation, handler bubbling, per-handler processors, batch handling, deduplication filtering, and failure-tolerant grouping.
 - [**Deliberately Unimplemented Features**](docs/deliberate_omissions.md): Details features intentionally omitted from Monolog (e.g. PSR-3 placeholder interpolation, `*f` methods, runtime setters) and their Go architectural rationales.
 - [**Glossary & Concepts**](docs/glossary.md): Terminology and concepts including Channels, Handlers, Processors, Formatters, Bubbling, and Batching.
 - [**Continuous Integration & Quality Assurance**](docs/ci.md): Details the GitHub Actions CI pipeline, test coverage, deadcode reachability checks, and `golangci-lint` static analysis.
