@@ -8,16 +8,18 @@ A flexible, channel-based generic structured logging library for Go inspired by 
 - **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
 - **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
 - **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Group, WhatFailureGroup, Test, Null.
+- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Sampling, Socket, Group, WhatFailureGroup, Test, Null.
 - **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
 - **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
 - **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
 - **Resettable Lifecycle**: Modeled after Monolog's `ResettableInterface`, `monogo.Resettable` (`Reset(ctx context.Context) error`) allows loggers, handlers, and processors to reset buffers, re-arm triggers, clear deduplication stores, and regenerate request UIDs between jobs in long-running services.
-- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Environment variables, Memory stats, Tags, Unique request ID/UID).
+- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Web / HTTP request info, Environment variables, Memory stats, Tags, Unique request ID/UID).
+- **HTTP Middleware**: Standard `net/http` middleware with automatic `X-Request-ID` generation, ambient context binding, latency tracking, and request completion logging.
 - **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
 - **Backend Integrations**:
   - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
   - `zerolog` Backend (use `zerolog` as a Monogo output handler).
+  - Standard Library `*log.Logger` & `io.Writer` Bridge (route `http.Server.ErrorLog` and legacy dependencies into Monogo).
 
 ## Installation
 
@@ -189,6 +191,67 @@ logger := monogo.New("app", []monogo.Handler{primaryHandler, resilientGroup}, ni
 logger.Error(ctx, "Payment transaction failed")
 ```
 
+## Sampling Handler
+
+Inspired by PHP Monolog's `SamplingHandler`, the `Sampling` handler downsamples high-throughput log traffic based on a 1-in-N sampling factor (e.g., factor `10` emits approximately 10% of records). To prevent losing critical operational errors, `handler.WithSamplingThreshold` allows logs at or above a specified severity level (e.g. `ERROR`) to completely bypass sampling:
+
+```go
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+stdoutHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
+
+// Sample DEBUG and INFO logs 1-in-10 (10%), but always emit ERROR+ logs (100%)
+samplingHandler := handler.NewSampling(
+	stdoutHandler,
+	10,
+	handler.WithSamplingThreshold(monogo.ERROR),
+)
+
+logger := monogo.New("app", []monogo.Handler{samplingHandler}, nil)
+
+logger.Debug(ctx, "High volume trace")  // Emitted with 10% probability
+logger.Error(ctx, "Critical failure")    // Always emitted (bypasses sampling)
+```
+
+## Socket Handler
+
+Modeled after PHP Monolog's `SocketHandler`, the `Socket` handler writes formatted log records over network sockets (TCP, UDP, or Unix domain sockets). It features automatic reconnection, customizable dial/write timeouts, and `Resettable` lifecycle support:
+
+```go
+import (
+	"context"
+	"time"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/formatter"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+// Stream logs over TCP to Logstash / remote syslog / aggregator
+socketHandler := handler.NewSocket(
+	"tcp",
+	"10.0.0.50:5000",
+	monogo.INFO,
+	handler.WithFormatter(formatter.NewJSON("")),
+	handler.WithWriteTimeout(3*time.Second),
+	handler.WithDialTimeout(5*time.Second),
+)
+defer socketHandler.Close(ctx)
+
+logger := monogo.New("network-app", []monogo.Handler{socketHandler}, nil)
+logger.Info(ctx, "Log streaming over TCP socket")
+```
+
 ## Handler Bubbling
 
 Like PHP Monolog, handlers in Monogo are evaluated through a LIFO stack. By default, records bubble through all handlers that handle the record's level. A handler can stop propagation down the stack by configuring bubbling as `false` at construction time via `handler.WithBubble(false)`:
@@ -255,6 +318,7 @@ Processors enrich log records with contextual and system diagnostic metadata bef
 - **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset(ctx)` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
 - **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
 - **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
+- **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` (Monolog `WebProcessor`).
 
 ### Monogo Extensions
 - **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
@@ -494,6 +558,74 @@ zh := zerologadapter.NewZerologHandler(zLogger, monogo.DEBUG)
 
 logger := monogo.New("api", []monogo.Handler{zh}, nil)
 logger.Error(ctx, "Database connection lost", map[string]interface{}{"db": "postgres"})
+```
+
+## Using Standard Library Bridge (*log.Logger & io.Writer)
+
+To integrate Monogo with standard library servers (such as `http.Server.ErrorLog`), database drivers, or legacy Go packages that write to an `io.Writer` or standard library `*log.Logger`, the `adapter/stdlogadapter` package routes incoming log lines into a `*monogo.Logger` at a designated level:
+
+```go
+import (
+	"context"
+	"net/http"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/adapter/stdlogadapter"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+logger := monogo.New("server", []monogo.Handler{handler.NewStream(os.Stdout, monogo.INFO)}, nil)
+
+// 1. Pass standard library *log.Logger to http.Server
+server := &http.Server{
+	Addr:     ":8080",
+	ErrorLog: stdlogadapter.NewStdLogger(ctx, logger, monogo.ERROR, "[http] ", 0),
+}
+
+// 2. Or obtain an io.Writer for third-party libraries
+writer := stdlogadapter.NewWriter(ctx, logger, monogo.INFO)
+```
+
+## HTTP Middleware & WebProcessor
+
+Monogo includes an idiomatic Go `net/http` middleware (`middleware.HTTP`) and a Monolog-compatible `processor.Web`:
+- **`middleware.HTTP`**: Intercepts requests, automatically assigns/propagates `X-Request-ID`, extracts request metadata into ambient context via `processor.WithHTTPRequest`, records response status codes, latency, and bytes written, and logs request completions.
+- **`processor.Web`**: Injects request attributes (`url`, `ip`, `http_method`, `server`, `referrer`, `user_agent`) into `Record.Extra` from request context.
+
+```go
+package main
+
+import (
+	"net/http"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+	"github.com/githoober/monogo/middleware"
+	"github.com/githoober/monogo/processor"
+)
+
+func main() {
+	// Logger configured with WebProcessor to enrich log records with HTTP metadata
+	logger := monogo.New("api",
+		[]monogo.Handler{handler.NewStream(os.Stdout, monogo.DEBUG)},
+		[]monogo.Processor{processor.Web()},
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/hello", func(w http.ResponseWriter, r *http.Request) {
+		// Log from inside handler; ambient request_id and HTTP attributes are automatically attached!
+		logger.Info(r.Context(), "Greeting user", map[string]interface{}{"user": "alice"})
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Hello, World!"))
+	})
+
+	// Wrap entire router with Monogo HTTP middleware
+	httpHandler := middleware.HTTP(logger)(mux)
+	_ = http.ListenAndServe(":8080", httpHandler)
+}
 ```
 
 ## Documentation

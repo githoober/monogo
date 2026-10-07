@@ -53,6 +53,8 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`handler.Test`](../handler/test_null.go) | `Monolog\Handler\TestHandler` | Adapted counterpart to `TestHandler`. Retains records in memory for assertions during unit and integration testing. |
 | [`handler.Deduplication`](../handler/deduplication.go) | `Monolog\Handler\DeduplicationHandler` | Adapted counterpart to `DeduplicationHandler`. Provides sliding time-window duplicate suppression, adapted to use a thread-safe in-memory cache with auto-pruning rather than Monolog's file-based store. |
 | [`handler.WhatFailureGroup`](../handler/what_failure_group.go) | `Monolog\Handler\WhatFailureGroupHandler` | Adapted counterpart to `WhatFailureGroupHandler`. Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics (analogous to catching `Throwable` in PHP). |
+| [`handler.Sampling`](../handler/sampling.go) | `Monolog\Handler\SamplingHandler` | Adapted counterpart to `SamplingHandler`. Downsamples records based on a 1-in-N sampling factor, supporting custom sampler strategies and level thresholds to bypass sampling for critical logs. |
+| [`handler.Socket`](../handler/socket.go) | `Monolog\Handler\SocketHandler` | Adapted counterpart to `SocketHandler`. Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets) with automatic reconnection, timeouts, and `Resettable` lifecycle support. |
 
 ---
 
@@ -76,6 +78,7 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`processor.ProcessId`](../processor/processor.go) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. |
 | [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables instead of git CLI execution. |
 | [`processor.Tag`](../processor/processor.go) | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |
+| [`processor.Web`](../processor/web.go) | `Monolog\Processor\WebProcessor` | Injects HTTP request attributes (URL, client IP, method, server, referrer, user agent) into `Record.Extra` from request context or `http.Request`. |
 
 ---
 
@@ -108,6 +111,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
     - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
     - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
     - `adapter/zerologadapter.New`: Routes Monogo log records to `rs/zerolog`.
+    - `adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
   - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 
 ### 5. Concurrent Goroutine Safety & Copy-On-Write Isolation
@@ -141,6 +145,11 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
   - `formatter.JSON` supports two batch formatting modes via `WithBatchMode`:
     - `BatchModeNewlines` (default): Formats batches as newline-delimited JSON (NDJSON).
     - `BatchModeJSON`: Formats the entire batch as a single JSON array (`[...]`).
+
+### 10. Native `net/http` Middleware
+- **Status:** **New in Monogo** *(Go web ecosystem standard)*.
+- **What it does:**
+  - `middleware.HTTP(logger)` provides a standard `func(http.Handler) http.Handler` middleware that assigns/preserves `X-Request-ID`, binds ambient request metadata via `processor.WithHTTPRequest`, records response status codes and bytes written, measures duration, and logs completed requests.
 
 ---
 

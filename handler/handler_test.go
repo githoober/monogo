@@ -164,6 +164,30 @@ func TestFilterHandler(t *testing.T) {
 	}
 }
 
+func TestFilterHandler_Bubbling(t *testing.T) {
+	ctx := t.Context()
+	inner := handler.NewTest(monogo.DEBUG)
+	fallback := handler.NewTest(monogo.DEBUG)
+	filterH := handler.NewFilter(inner, monogo.INFO, monogo.WARNING, handler.WithBubble(false))
+
+	if filterH.Bubble() {
+		t.Fatalf("expected Filter.Bubble() to be false")
+	}
+
+	logger := monogo.New("app", []monogo.Handler{filterH, fallback}, nil)
+
+	_ = logger.Debug(ctx, "debug msg") // Filter rejects -> bubbles to fallback
+	_ = logger.Info(ctx, "info msg")   // Filter handles -> stops bubbling
+	_ = logger.Error(ctx, "error msg") // Filter rejects -> bubbles to fallback
+
+	if len(inner.Records()) != 1 || inner.Records()[0].Message != "info msg" {
+		t.Errorf("inner handler expected 1 record (info msg), got: %v", inner.Records())
+	}
+	if len(fallback.Records()) != 2 {
+		t.Errorf("fallback handler expected 2 records (debug and error), got: %d", len(fallback.Records()))
+	}
+}
+
 func TestGroupHandler(t *testing.T) {
 	t1 := handler.NewTest(monogo.DEBUG)
 	t2 := handler.NewTest(monogo.WARNING)
@@ -177,6 +201,57 @@ func TestGroupHandler(t *testing.T) {
 	}
 	if len(t2.Records()) != 1 {
 		t.Errorf("t2 should have 1 record, got %d", len(t2.Records()))
+	}
+}
+
+func TestGroupHandler_NotHandledComposition(t *testing.T) {
+	ctx := t.Context()
+
+	// Case 1: One child handles, one child returns ErrNotHandled.
+	// Group successfully handles the record and suppresses bubbling to outer fallback.
+	{
+		hPrimary := handler.NewTest(monogo.DEBUG)
+		hSampledInner := handler.NewTest(monogo.DEBUG)
+		// Sampler always rejects (factor 100, sampler returns false)
+		hSampling := handler.NewSampling(hSampledInner, 100,
+			handler.WithSampler(func() bool { return false }),
+		)
+
+		group := handler.NewGroup([]monogo.Handler{hPrimary, hSampling}, handler.WithBubble(false))
+		outerFallback := handler.NewTest(monogo.DEBUG)
+
+		logger := monogo.New("app", []monogo.Handler{group, outerFallback}, nil)
+		if err := logger.Info(ctx, "mixed group record"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(hPrimary.Records()) != 1 {
+			t.Errorf("expected hPrimary to receive 1 record, got %d", len(hPrimary.Records()))
+		}
+		if len(outerFallback.Records()) != 0 {
+			t.Errorf("expected outerFallback to receive 0 records (bubbling stopped), got %d", len(outerFallback.Records()))
+		}
+	}
+
+	// Case 2: All children return ErrNotHandled.
+	// Group propagates ErrNotHandled, allowing bubbling to outer fallback.
+	{
+		hSampledInner1 := handler.NewTest(monogo.DEBUG)
+		hSampledInner2 := handler.NewTest(monogo.DEBUG)
+		hSampling1 := handler.NewSampling(hSampledInner1, 100, handler.WithSampler(func() bool { return false }))
+		hSampling2 := handler.NewSampling(hSampledInner2, 100, handler.WithSampler(func() bool { return false }))
+
+		group := handler.NewGroup([]monogo.Handler{hSampling1, hSampling2}, handler.WithBubble(false))
+		outerFallback := handler.NewTest(monogo.DEBUG)
+
+		logger := monogo.New("app", []monogo.Handler{group, outerFallback}, nil)
+		if err := logger.Info(ctx, "unhandled group record"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(outerFallback.Records()) != 1 {
+			t.Errorf("expected outerFallback to receive 1 record because group did not handle, got %d", len(outerFallback.Records()))
+		}
 	}
 }
 
@@ -1434,6 +1509,67 @@ func TestWhatFailureGroupBubblingAndLoggerIntegration(t *testing.T) {
 	}
 	if len(hSubsequent.Records()) != 0 {
 		t.Errorf("expected hSubsequent to receive 0 records due to bubble=false, got %d", len(hSubsequent.Records()))
+	}
+}
+
+func TestWhatFailureGroup_NotHandledComposition(t *testing.T) {
+	ctx := t.Context()
+
+	var callbackCalls int
+	onError := func(err error, h monogo.Handler) {
+		callbackCalls++
+	}
+
+	// Case 1: Sampling handler inside WhatFailureGroup rejects record.
+	// ErrNotHandled must NOT be reported to onError callback, and WhatFailureGroup
+	// propagates ErrNotHandled so outer fallback receives the record.
+	{
+		hSampledInner := handler.NewTest(monogo.DEBUG)
+		hSampling := handler.NewSampling(hSampledInner, 100, handler.WithSampler(func() bool { return false }))
+
+		wfg := handler.NewWhatFailureGroup([]monogo.Handler{hSampling},
+			handler.WithWhatFailureCallback(onError),
+			handler.WithBubble(false),
+		)
+		outerFallback := handler.NewTest(monogo.DEBUG)
+
+		logger := monogo.New("app", []monogo.Handler{wfg, outerFallback}, nil)
+		if err := logger.Info(ctx, "rejected record"); err != nil {
+			t.Fatalf("unexpected logger error: %v", err)
+		}
+
+		if callbackCalls != 0 {
+			t.Errorf("expected 0 callback calls for ErrNotHandled sentinel, got %d", callbackCalls)
+		}
+		if len(outerFallback.Records()) != 1 {
+			t.Errorf("expected outerFallback to receive rejected record, got %d", len(outerFallback.Records()))
+		}
+	}
+
+	// Case 2: One child handles, one rejects.
+	// Handled record is not propagated to outer fallback.
+	{
+		hPrimary := handler.NewTest(monogo.DEBUG)
+		hSampledInner := handler.NewTest(monogo.DEBUG)
+		hSampling := handler.NewSampling(hSampledInner, 100, handler.WithSampler(func() bool { return false }))
+
+		wfg := handler.NewWhatFailureGroup([]monogo.Handler{hPrimary, hSampling},
+			handler.WithWhatFailureCallback(onError),
+			handler.WithBubble(false),
+		)
+		outerFallback := handler.NewTest(monogo.DEBUG)
+
+		logger := monogo.New("app", []monogo.Handler{wfg, outerFallback}, nil)
+		if err := logger.Info(ctx, "handled record"); err != nil {
+			t.Fatalf("unexpected logger error: %v", err)
+		}
+
+		if len(hPrimary.Records()) != 1 {
+			t.Errorf("expected hPrimary to receive 1 record, got %d", len(hPrimary.Records()))
+		}
+		if len(outerFallback.Records()) != 0 {
+			t.Errorf("expected outerFallback to receive 0 records, got %d", len(outerFallback.Records()))
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/githoober/monogo"
@@ -77,16 +78,27 @@ func (w *WhatFailureGroup) IsHandling(ctx context.Context, level monogo.Level) b
 }
 
 // Handle sends record to all sub-handlers that handle the record level.
-// Any error or panic returned by a sub-handler is suppressed and forwarded to the optional callback.
-// Always returns nil.
+// Any operational error or panic returned by a sub-handler is suppressed and forwarded to the optional callback.
+// If all sub-handlers return ErrNotHandled, it returns ErrNotHandled so bubbling can continue.
+// If at least one sub-handler handled the record (or failed operationally), it returns nil.
 func (w *WhatFailureGroup) Handle(ctx context.Context, record monogo.Record) error {
 	record = w.ProcessRecord(record)
+	handledAny := false
+	sawNotHandled := false
 	for _, h := range w.handlers {
 		if safeIsHandling(h, w.onError, ctx, record.Level) {
-			invokeSafe(h, w.onError, func() error {
+			err := invokeSafe(h, w.onError, func() error {
 				return h.Handle(ctx, record)
 			})
+			if errors.Is(err, monogo.ErrNotHandled) {
+				sawNotHandled = true
+			} else {
+				handledAny = true
+			}
 		}
+	}
+	if !handledAny && sawNotHandled {
+		return monogo.ErrNotHandled
 	}
 	return nil
 }
@@ -107,13 +119,13 @@ func (w *WhatFailureGroup) HandleBatch(ctx context.Context, records []monogo.Rec
 
 	for _, h := range w.handlers {
 		if bh, ok := h.(monogo.BatchHandler); ok {
-			invokeSafe(h, w.onError, func() error {
+			_ = invokeSafe(h, w.onError, func() error {
 				return bh.HandleBatch(ctx, records)
 			})
 		} else {
 			for _, rec := range records {
 				if safeIsHandling(h, w.onError, ctx, rec.Level) {
-					invokeSafe(h, w.onError, func() error {
+					_ = invokeSafe(h, w.onError, func() error {
 						return h.Handle(ctx, rec)
 					})
 				}
@@ -127,7 +139,7 @@ func (w *WhatFailureGroup) HandleBatch(ctx context.Context, records []monogo.Rec
 // and forwarded to the optional callback. Always returns nil.
 func (w *WhatFailureGroup) Close(ctx context.Context) error {
 	for _, h := range w.handlers {
-		invokeSafe(h, w.onError, func() error {
+		_ = invokeSafe(h, w.onError, func() error {
 			return h.Close(ctx)
 		})
 	}
@@ -140,7 +152,7 @@ func (w *WhatFailureGroup) Reset(ctx context.Context) error {
 	_ = w.BaseHandler.Reset(ctx)
 	for _, h := range w.handlers {
 		if r, ok := h.(monogo.Resettable); ok {
-			invokeSafe(h, w.onError, func() error {
+			_ = invokeSafe(h, w.onError, func() error {
 				return r.Reset(ctx)
 			})
 		}
@@ -150,14 +162,14 @@ func (w *WhatFailureGroup) Reset(ctx context.Context) error {
 
 func safeIsHandling(h monogo.Handler, onError WhatFailureCallback, ctx context.Context, level monogo.Level) bool {
 	var handled bool
-	invokeSafe(h, onError, func() error {
+	_ = invokeSafe(h, onError, func() error {
 		handled = h.IsHandling(ctx, level)
 		return nil
 	})
 	return handled
 }
 
-func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) {
+func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) error {
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
@@ -175,7 +187,8 @@ func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) 
 		}
 	}()
 
-	if err = fn(); err != nil {
+	err = fn()
+	if err != nil && !errors.Is(err, monogo.ErrNotHandled) {
 		if onError != nil {
 			func() {
 				defer func() { _ = recover() }()
@@ -183,4 +196,5 @@ func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) 
 			}()
 		}
 	}
+	return err
 }

@@ -26,6 +26,8 @@ A destination component responsible for receiving a `Record` and outputting or f
 - `Buffer`: Buffers records until capacity or flush level.
 - `Deduplication`: Suppresses duplicate log records occurring within a time window.
 - `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
+- `Sampling`: Downsamples log records based on a 1-in-N factor with optional bypass threshold for critical logs.
+- `Socket`: Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets).
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
@@ -36,6 +38,7 @@ A function or component that enriches `Record.Extra` with additional system meta
 - `UID`: Unique invocation request ID (Monolog `UidProcessor`).
 - `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
 - `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
+- `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
 - `Env` / `EnvMap`: Environment variables (Monogo extension for containerized/cloud environments).
 
 ### Formatter

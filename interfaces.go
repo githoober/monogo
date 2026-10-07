@@ -1,6 +1,14 @@
 package monogo
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrNotHandled is returned by a Handler when a record is intentionally not handled
+// (e.g. dropped by a sampling or filtering decision) so that log bubbling can continue
+// down the handler stack rather than being stopped by a static Bubble()=false setting.
+var ErrNotHandled = errors.New("monogo: record not handled")
 
 // Handler handles a log record (e.g. writing to file, console, service, or forwarding to another handler).
 type Handler interface {
