@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"sync"
 
 	"github.com/githoober/monogo"
 )
@@ -25,17 +26,25 @@ func WithContextFunc(fn func() context.Context) Option {
 	}
 }
 
-// Writer implements io.Writer and forwards incoming log lines to a monogo.Logger at a designated level.
+// Writer implements io.Writer and io.Closer, framing incoming byte streams into individual
+// log lines and forwarding them to a monogo.Logger at a designated level.
 type Writer struct {
 	ctx         context.Context
 	logger      *monogo.Logger
 	level       monogo.Level
 	contextFunc func() context.Context
+
+	mu  sync.Mutex
+	buf []byte
 }
 
-var _ io.Writer = (*Writer)(nil)
+var (
+	_ io.Writer = (*Writer)(nil)
+	_ io.Closer = (*Writer)(nil)
+)
 
-// NewWriter creates an io.Writer that forwards written lines to logger at the specified level.
+// NewWriter creates an io.Writer that frames written byte streams into individual log lines
+// and forwards them to logger at the specified level.
 // ctx must be a non-nil context provided by the caller (application lifecycle, server startup, or request context).
 func NewWriter(ctx context.Context, logger *monogo.Logger, level monogo.Level, opts ...Option) *Writer {
 	o := options{}
@@ -52,11 +61,52 @@ func NewWriter(ctx context.Context, logger *monogo.Logger, level monogo.Level, o
 	}
 }
 
-// Write parses and emits the byte slice as a log record, trimming any trailing newlines.
+// Write buffers incoming bytes, extracts newline-terminated log lines, and forwards each
+// line as a log record. Partial lines without a terminating newline remain buffered until
+// subsequent writes provide a newline or Flush/Close is invoked.
 func (w *Writer) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
 	}
+
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buf = append(w.buf, p...)
+	for {
+		idx := bytes.IndexByte(w.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		lineBytes := w.buf[:idx]
+		line := string(bytes.TrimRight(lineBytes, "\r"))
+		w.buf = w.buf[idx+1:]
+
+		ctx := w.ctx
+		if w.contextFunc != nil {
+			if dynCtx := w.contextFunc(); dynCtx != nil {
+				ctx = dynCtx
+			}
+		}
+
+		if err := w.logger.Log(ctx, w.level, line); err != nil {
+			return 0, err
+		}
+	}
+
+	return len(p), nil
+}
+
+// Flush flushes any remaining buffered partial line to the logger.
+func (w *Writer) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if len(w.buf) == 0 {
+		return nil
+	}
+	line := string(bytes.TrimRight(w.buf, "\r\n"))
+	w.buf = nil
 
 	ctx := w.ctx
 	if w.contextFunc != nil {
@@ -64,12 +114,12 @@ func (w *Writer) Write(p []byte) (int, error) {
 			ctx = dynCtx
 		}
 	}
+	return w.logger.Log(ctx, w.level, line)
+}
 
-	line := string(bytes.TrimRight(p, "\r\n"))
-	if err := w.logger.Log(ctx, w.level, line); err != nil {
-		return 0, err
-	}
-	return len(p), nil
+// Close flushes any pending buffered line.
+func (w *Writer) Close() error {
+	return w.Flush()
 }
 
 // NewStdLogger returns a standard library *log.Logger configured to write to logger at the specified level.

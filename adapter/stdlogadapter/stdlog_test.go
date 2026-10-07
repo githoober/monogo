@@ -136,8 +136,79 @@ func TestWriter_ErrorPropagation(t *testing.T) {
 	l := monogo.New("app", []monogo.Handler{errH}, nil)
 
 	w := stdlogadapter.NewWriter(ctx, l, monogo.INFO)
-	_, err := w.Write([]byte("test"))
+	_, err := w.Write([]byte("test\n"))
 	if err == nil {
 		t.Errorf("expected error from Write, got nil")
+	}
+}
+
+func TestWriter_LineFraming(t *testing.T) {
+	ctx := t.Context()
+	testH := handler.NewTest(monogo.DEBUG)
+	l := monogo.New("app", []monogo.Handler{testH}, nil)
+
+	w := stdlogadapter.NewWriter(ctx, l, monogo.INFO)
+
+	// Single write with multiple lines
+	_, err := w.Write([]byte("first\nsecond\r\nthird\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Partial writes split across multiple calls
+	_, err = w.Write([]byte("partial "))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = w.Write([]byte("line\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	records := testH.Records()
+	if len(records) != 4 {
+		t.Fatalf("expected 4 records, got %d", len(records))
+	}
+	expected := []string{"first", "second", "third", "partial line"}
+	for i, exp := range expected {
+		if records[i].Message != exp {
+			t.Errorf("record %d: expected %q, got %q", i, exp, records[i].Message)
+		}
+	}
+}
+
+func TestWriter_FlushAndClose(t *testing.T) {
+	ctx := t.Context()
+	testH := handler.NewTest(monogo.DEBUG)
+	l := monogo.New("app", []monogo.Handler{testH}, nil)
+
+	w := stdlogadapter.NewWriter(ctx, l, monogo.INFO)
+
+	// Write without newline
+	_, _ = w.Write([]byte("unterminated line"))
+	if len(testH.Records()) != 0 {
+		t.Errorf("expected 0 records before flush, got %d", len(testH.Records()))
+	}
+
+	// Flush commits the pending buffer
+	if err := w.Flush(); err != nil {
+		t.Fatalf("unexpected flush error: %v", err)
+	}
+	if len(testH.Records()) != 1 || testH.Records()[0].Message != "unterminated line" {
+		t.Fatalf("expected 1 record after flush, got %v", testH.Records())
+	}
+
+	// Another partial write, closed
+	_, _ = w.Write([]byte("another line"))
+	if err := w.Close(); err != nil {
+		t.Fatalf("unexpected close error: %v", err)
+	}
+	if len(testH.Records()) != 2 || testH.Records()[1].Message != "another line" {
+		t.Fatalf("expected 2 records after close, got %v", testH.Records())
+	}
+
+	// Flush on empty buffer is a no-op
+	if err := w.Flush(); err != nil {
+		t.Fatalf("unexpected flush error on empty: %v", err)
 	}
 }

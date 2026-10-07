@@ -95,7 +95,6 @@ func (w *responseWriter) WriteHeader(code int) {
 		return
 	}
 
-	w.statusCode = code
 	// 1xx status codes (except 101 Switching Protocols) are informational
 	// intermediate responses and do not commit the final response header in net/http.
 	if code >= 100 && code <= 199 && code != http.StatusSwitchingProtocols {
@@ -103,6 +102,7 @@ func (w *responseWriter) WriteHeader(code int) {
 		return
 	}
 
+	w.statusCode = code
 	w.wroteHeader = true
 	w.ResponseWriter.WriteHeader(code)
 }

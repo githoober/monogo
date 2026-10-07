@@ -182,6 +182,23 @@ func TestHTTPMiddleware_StatusCommitment(t *testing.T) {
 			t.Fatalf("expected logged status 200, got %v", records[0].Context["status"])
 		}
 	}
+
+	// Case D: 1xx informational status (103) with no subsequent WriteHeader -> logs 200 default
+	{
+		testH := handler.NewTest(monogo.DEBUG)
+		l := monogo.New("http", []monogo.Handler{testH}, nil)
+		handlerFunc := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(103) // Early Hints only
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		middleware.HTTP(l)(handlerFunc).ServeHTTP(w, req)
+
+		records := testH.Records()
+		if len(records) != 1 || records[0].Context["status"] != http.StatusOK {
+			t.Fatalf("expected logged status 200 when only 1xx sent, got %v", records[0].Context["status"])
+		}
+	}
 }
 
 func TestHTTPMiddleware_PanicRecoveryAndLogging(t *testing.T) {
