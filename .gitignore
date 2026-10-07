@@ -1,0 +1,42 @@
+# Compiled binaries and libraries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Test binaries, coverage profiles, and benchmarks
+*.test
+*.out
+coverage.out
+coverage.html
+*.pprof
+cpu.out
+mem.out
+
+# Scratch and temporary directories
+scratch/
+tmp/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.bak
+
+# Environment and secrets
+.env
+.env.*
+!.env.example

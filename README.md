@@ -1,5 +1,10 @@
 # Monogo
 
+[![CI](https://github.com/githoober/monogo/actions/workflows/ci.yml/badge.svg)](https://github.com/githoober/monogo/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/githoober/monogo.svg)](https://pkg.go.dev/github.com/githoober/monogo)
+[![Go Version](https://img.shields.io/badge/go-1.24%2B-blue.svg)](https://golang.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A flexible, channel-based generic structured logging library for Go inspired by PHP's Monolog. The core library is completely generic and decoupled from specific logging frameworks, allowing pluggable backend adapters like Go standard library `log/slog` and third-party loggers like `zerolog`.
 
 ## Features
