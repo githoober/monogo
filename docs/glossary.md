@@ -17,29 +17,36 @@ The central data structure passed through the logging pipeline containing:
 - `Extra`: Map of metadata added by Processors.
 
 ### Handler
-A destination component responsible for receiving a `Record` and outputting or forwarding it. Examples:
-- `Stream`: Writes to `io.Writer` (console, files).
-- `RotatingFile`: Rotates log files based on size/age using `lumberjack`.
-- `FingersCrossed`: Buffers logs until triggered by an action level (e.g. `ERROR`).
-- `Filter`: Filters records within a level range.
-- `Group`: Multiplexes records to multiple handlers.
-- `Buffer`: Buffers records until capacity or flush level.
-- `Deduplication`: Suppresses duplicate log records occurring within a time window.
-- `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
-- `Sampling`: Downsamples log records based on a 1-in-N factor with optional bypass threshold for critical logs.
-- `Socket`: Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets).
+A destination component responsible for receiving a `Record` and outputting or forwarding it.
+- **Core Handlers (`github.com/githoober/monogo/handler`)**:
+  - `Stream`: Writes to `io.Writer` (console, files).
+  - `JSONStream`: Dedicated stream handler preconfigured with JSON formatting (`NewJSONStream` / `NewJSON`).
+  - `FingersCrossed`: Buffers logs until triggered by an action level (e.g. `ERROR`).
+  - `Test`: Retains records in memory for assertions during tests.
+  - `Null`: Consumes and discards records silently.
+- **Extension Handlers (`github.com/githoober/monogo/ext/handler`)**:
+  - `RotatingFile`: Rotates log files based on size/age using `lumberjack.v2`.
+  - `Buffer`: Buffers records until capacity or flush level.
+  - `Deduplication`: Suppresses duplicate log records occurring within a time window.
+  - `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
+  - `Sampling`: Downsamples log records based on a 1-in-N factor with optional bypass threshold.
+  - `Socket`: Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets).
+  - `Filter`: Filters records within a level range.
+  - `Group`: Multiplexes records to multiple handlers.
 
 ### Processor
-A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling. Examples:
-- `Caller`: File, line, and function caller info (Monolog `IntrospectionProcessor`).
-- `Hostname`: OS hostname (Monolog `HostnameProcessor`).
-- `ProcessId`: OS process ID (`os.Getpid()`, Monolog `ProcessIdProcessor`).
-- `Memory`: Runtime memory statistics (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
-- `UID`: Unique invocation request ID (Monolog `UidProcessor`).
-- `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
-- `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
-- `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
-- `Env` / `EnvMap`: Environment variables (Monogo extension for containerized/cloud environments).
+A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling.
+- **Core Processors (`github.com/githoober/monogo/processor`)**:
+  - `ProcessId`: OS process ID (`os.Getpid()`, Monolog `ProcessIdProcessor`, aliased as `processor.Process()`).
+  - `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
+- **Extension Processors (`github.com/githoober/monogo/ext/processor`)**:
+  - `Caller`: File, line, and function caller info (Monolog `IntrospectionProcessor`).
+  - `Hostname`: OS hostname (Monolog `HostnameProcessor`).
+  - `Memory`: Runtime memory statistics (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
+  - `UID`: Unique invocation request ID (Monolog `UidProcessor`).
+  - `Git`: Git commit hash, branch, time, and dirty status (Monolog `GitProcessor`).
+  - `Tag`: Fixed key-value tag (Monolog `TagProcessor`).
+  - `Env` / `EnvMap`: Environment variables (convenience extension for containerized/cloud environments).
 
 ### Formatter
 Transforms a `Record` into a byte slice or string format for output. Examples:

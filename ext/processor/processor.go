@@ -217,6 +217,11 @@ func ProcessId() monogo.ProcessorFunc {
 	}
 }
 
+// Process is an alias for ProcessId.
+func Process() monogo.ProcessorFunc {
+	return ProcessId()
+}
+
 // GitConfig holds VCS details to inject into log records.
 type GitConfig struct {
 	Commit   string

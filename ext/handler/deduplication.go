@@ -69,6 +69,11 @@ func WithDeduplicationKey(fn func(monogo.Record) string) Option {
 	}
 }
 
+// WithDeduplicationKeyFunc is an alias for WithDeduplicationKey.
+func WithDeduplicationKeyFunc(fn func(monogo.Record) string) Option {
+	return WithDeduplicationKey(fn)
+}
+
 // WithDeduplicationStore configures a custom DeduplicationStore.
 func WithDeduplicationStore(store DeduplicationStore) Option {
 	return func(o *options) {
@@ -116,10 +121,7 @@ func NewDeduplication(handler monogo.Handler, dedupLevel monogo.Level, timeWindo
 		timeWindow = 60 * time.Second
 	}
 
-	o := defaultOptions()
-	for _, opt := range opts {
-		opt(&o)
-	}
+	base, o := newBaseHandler(monogo.DEBUG, opts...)
 
 	keyFn := o.dedupKeyFunc
 	if keyFn == nil {
@@ -132,7 +134,7 @@ func NewDeduplication(handler monogo.Handler, dedupLevel monogo.Level, timeWindo
 	}
 
 	return &Deduplication{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler: base,
 		handler:     handler,
 		dedupLevel:  dedupLevel,
 		timeWindow:  timeWindow,
@@ -169,7 +171,7 @@ func (d *Deduplication) Handle(ctx context.Context, record monogo.Record) error 
 // HandleBatch processes a batch of records, filtering out duplicate records within the batch
 // and against recent history before passing the deduplicated batch to the inner handler.
 func (d *Deduplication) HandleBatch(ctx context.Context, records []monogo.Record) error {
-	if len(d.processors) > 0 {
+	if len(d.Processors()) > 0 {
 		processed := make([]monogo.Record, len(records))
 		for i, rec := range records {
 			processed[i] = d.ProcessRecord(rec)

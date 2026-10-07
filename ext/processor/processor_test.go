@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/processor"
+	"github.com/githoober/monogo/ext/processor"
 )
 
 func TestProcessors(t *testing.T) {
@@ -59,6 +59,13 @@ func TestProcessors(t *testing.T) {
 	pid, ok := rec.Extra["pid"].(int)
 	if !ok || pid <= 0 {
 		t.Errorf("ProcessId processor failed, got %v", rec.Extra["pid"])
+	}
+
+	// Test Process alias
+	procAlias := processor.Process()
+	recAlias := procAlias.Process(monogo.Record{Message: "alias"})
+	if recAlias.Extra["pid"] != pid {
+		t.Errorf("Process alias failed, got %v", recAlias.Extra["pid"])
 	}
 }
 

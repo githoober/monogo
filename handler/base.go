@@ -2,8 +2,6 @@ package handler
 
 import (
 	"context"
-	"net"
-	"time"
 
 	"github.com/githoober/monogo"
 )
@@ -20,29 +18,14 @@ type BaseHandler struct {
 var _ monogo.Resettable = (*BaseHandler)(nil)
 
 type options struct {
-	bubble              bool
-	formatter           monogo.Formatter
-	processors          []monogo.Processor
-	maxSizeMB           int
-	maxBackups          int
-	maxAgeDays          int
-	compress            bool
-	dedupKeyFunc        func(monogo.Record) string
-	dedupStore          DeduplicationStore
-	whatFailureCallback func(error, monogo.Handler)
-	resetErrorCallback  func(error)
-	sampler             func() bool
-	samplingThreshold   *monogo.Level
-	dialTimeout         time.Duration
-	writeTimeout        time.Duration
-	dialer              func(context.Context, string, string) (net.Conn, error)
+	bubble     bool
+	formatter  monogo.Formatter
+	processors []monogo.Processor
 }
 
 func defaultOptions() options {
 	return options{
-		bubble:     true,
-		maxSizeMB:  100,
-		maxBackups: 3,
+		bubble: true,
 	}
 }
 
@@ -77,48 +60,6 @@ func WithProcessor(processors ...monogo.Processor) Option {
 // WithProcessors is an alias for WithProcessor to configure multiple processors at construction time.
 func WithProcessors(processors ...monogo.Processor) Option {
 	return WithProcessor(processors...)
-}
-
-// WithResetErrorCallback registers a callback invoked if an error occurs during Reset() (e.g. flushing a buffer).
-func WithResetErrorCallback(fn func(error)) Option {
-	return func(o *options) {
-		o.resetErrorCallback = fn
-	}
-}
-
-// WithSampler configures a custom sampling function (returns true if record should be emitted).
-func WithSampler(sampler func() bool) Option {
-	return func(o *options) {
-		o.sampler = sampler
-	}
-}
-
-// WithSamplingThreshold sets a level at or above which records bypass sampling and are always emitted.
-func WithSamplingThreshold(level monogo.Level) Option {
-	return func(o *options) {
-		o.samplingThreshold = &level
-	}
-}
-
-// WithDialTimeout configures connection dial timeout for network handlers.
-func WithDialTimeout(d time.Duration) Option {
-	return func(o *options) {
-		o.dialTimeout = d
-	}
-}
-
-// WithWriteTimeout configures network write timeout for network handlers.
-func WithWriteTimeout(d time.Duration) Option {
-	return func(o *options) {
-		o.writeTimeout = d
-	}
-}
-
-// WithDialer configures a custom connection dialer for network handlers.
-func WithDialer(fn func(ctx context.Context, network, address string) (net.Conn, error)) Option {
-	return func(o *options) {
-		o.dialer = fn
-	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.

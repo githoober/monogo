@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/slogadapter"
 )
 
 type mockHandler struct {
@@ -95,11 +94,6 @@ func TestLevelStringsAndParsing(t *testing.T) {
 	}
 }
 
-func TestSlogLevelConversionInAdapter(t *testing.T) {
-	if slogadapter.ToSlogLevel(monogo.DEBUG) != -4 {
-		t.Errorf("expected -4 for slog.LevelDebug")
-	}
-}
 
 func TestAmbientContext(t *testing.T) {
 	ctx := context.Background()

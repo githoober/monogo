@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/ext/middleware"
 	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/middleware"
 	"github.com/githoober/monogo/processor"
 )
 

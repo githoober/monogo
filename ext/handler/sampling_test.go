@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/processor"
+	"github.com/githoober/monogo/ext/handler"
+	"github.com/githoober/monogo/ext/processor"
 )
 
 func TestSamplingHandler_Factor1(t *testing.T) {

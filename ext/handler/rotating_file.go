@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/githoober/monogo"
+	corehandler "github.com/githoober/monogo/handler"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -58,7 +59,7 @@ func WithCompress(compress bool) Option {
 }
 
 // NewRotatingFile creates a Stream handler configured with rolling/rotating file support powered by lumberjack.
-func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *Stream {
+func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *corehandler.Stream {
 	o := defaultOptions()
 	for _, opt := range opts {
 		if opt != nil {
@@ -74,5 +75,16 @@ func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *Strea
 		Compress:   o.compress,
 	}
 
-	return NewStream(lj, level, opts...)
+	var coreOpts []corehandler.Option
+	if !o.bubble {
+		coreOpts = append(coreOpts, corehandler.WithBubble(false))
+	}
+	if o.formatter != nil {
+		coreOpts = append(coreOpts, corehandler.WithFormatter(o.formatter))
+	}
+	if len(o.processors) > 0 {
+		coreOpts = append(coreOpts, corehandler.WithProcessors(o.processors...))
+	}
+
+	return corehandler.NewStream(lj, level, coreOpts...)
 }

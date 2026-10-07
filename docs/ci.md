@@ -29,18 +29,17 @@ flowchart LR
 
 - **Environment:** Ubuntu Latest, Go `1.24.x`.
 - **Steps:**
-  1. **Dependency Verification:** Runs `go mod verify` to guarantee module cache and `go.sum` integrity.
-  2. **Go Vet:** Runs `go vet ./...` to detect suspicious constructs.
-  3. **Unit Tests, Coverage & Race Detection:** Runs `go test -v -race -count=1 -coverprofile=coverage.out ./...` to verify package logic and catch data races without test caching.
-  4. **Coverage Summary:** Generates function-level coverage metrics via `go tool cover -func=coverage.out`.
+  1. **Dependency Verification:** Runs `go mod verify` in root and `ext/` to guarantee module cache and `go.sum` integrity.
+  2. **Go Vet:** Runs `go vet ./... ./ext/...` to detect suspicious constructs.
+  3. **Unit Tests, Coverage & Race Detection:** Runs `go test -v -race -count=1 ./... ./ext/...` to verify package logic and catch data races across both modules without test caching.
 
 #### Running Tests Locally
 
 ```bash
-# Run all tests with race detector and count=1 (requires CGO/C compiler)
-go test -v -race -count=1 ./...
+# Run all tests across both modules with race detector and count=1 (requires CGO/C compiler)
+go test -v -race -count=1 ./... ./ext/...
 
-# Run tests with coverage profiling and race detector
+# Run tests with coverage profiling for core module
 go test -v -race -count=1 -coverprofile=coverage.out ./...
 go tool cover -func=coverage.out
 ```
@@ -50,15 +49,15 @@ go tool cover -func=coverage.out
 ### 2. Deadcode Analysis Job (`deadcode`)
 
 - **Tool:** Official Go deadcode reachability analyzer ([`golang.org/x/tools/cmd/deadcode`](https://pkg.go.dev/golang.org/x/tools/cmd/deadcode)).
-- **Purpose:** Analyzes the call graph using Rapid Type Analysis (RTA) starting from tests and package entry points (`-test ./...`) to ensure that:
-  - There are no dead, unreachable, or unreferenced functions/methods anywhere in the library.
+- **Purpose:** Analyzes the call graph using Rapid Type Analysis (RTA) starting from tests and package entry points (`-test ./... ./ext/...`) to ensure that:
+  - There are no dead, unreachable, or unreferenced functions/methods anywhere in the library or extension module.
   - All exported public API methods, handlers, formatters, and processors are actively covered and reachable.
 - **Enforcement:** The job fails if any uncalled code is detected.
 
 #### Running Deadcode Analysis Locally
 
 ```bash
-go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
+go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./... ./ext/...
 ```
 
 ---
@@ -80,8 +79,9 @@ go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
 # Verify configuration
 golangci-lint config verify
 
-# Run linter across all packages
-golangci-lint run
+# Run linter across both modules
+golangci-lint run ./...
+(cd ext && golangci-lint run ./...)
 ```
 
 ---

@@ -2,25 +2,36 @@
 
 This document outlines the primary architectural decisions behind **Monogo** (`github.com/githoober/monogo`), a Go port of PHP Monolog.
 
-## 1. Generic, Decoupled Core Architecture
+## 1. Modular Multi-Module Architecture (Model 1 Split)
 
 ### Decision
-The core `monogo` package is strictly backend-agnostic. It defines generic interfaces (`Handler`, `Processor`, `Formatter`) and data structures (`Record`, `Level`) without hard dependencies on any external logging library or Go standard library adapters.
+The repository is split into two decoupled Go modules:
+1. **Core Module (`github.com/githoober/monogo`)**:
+   - Strictly backend-agnostic with **100% zero third-party dependencies** (relies entirely on Go standard library).
+   - Defines core interfaces (`Handler`, `BatchHandler`, `Bubbler`, `ProcessableHandler`, `Resettable`, `Processor`, `ProcessorFunc`, `Formatter`, `BatchFormatter`) and data structures (`Record`, `Level`).
+   - Contains core handlers (`Stream`, dedicated `JSONStream` via `handler.NewJSONStream` / `handler.NewJSON`, `FingersCrossed`, `Test`, `Null`).
+   - Contains core formatters (`Line`, `JSON`, `Logfmt`).
+   - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor).
+2. **Extension Module (`github.com/githoober/monogo/ext`)**:
+   - Advanced handlers (`RotatingFile` powered by `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, `Filter`, `Group`, `WhatFailureGroup`).
+   - Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`, `Env`, `EnvMap`).
+   - HTTP middleware (`net/http` request logging, latency tracking, `X-Request-ID`).
+   - Pluggable standard library adapters (`ext/adapter/slogadapter`, `ext/adapter/stdlogadapter`).
 
 ### Rationale
-In PHP Monolog, handlers dictate how log records are handled and emitted. In Go, applications use various backends (`log/slog`, `zerolog`, `zap`, etc.). Decoupling the core allows Monogo to serve as a universal logging facade and pipeline, enabling log records to be formatted and dispatched to any backend seamlessly.
+In PHP Monolog, handlers dictate how log records are handled and emitted. In Go, applications value minimal dependency trees and fast build times. Consumers needing only a lightweight, zero-dependency logging core and pipeline can depend exclusively on `github.com/githoober/monogo`. Applications needing rolling files (`lumberjack`), network sockets, complex deduplication caches, or framework adapters can opt into `github.com/githoober/monogo/ext` without forcing third-party dependencies onto core consumers.
 
 ---
 
-## 2. Pluggable Standard Library Adapters (`adapter/`)
+## 2. Pluggable Standard Library Adapters (`ext/adapter/`)
 
 ### Decision
-Standard library integrations reside in separate subpackages under `adapter/`:
-- **`adapter/slogadapter`**: Provides bidirectional `log/slog` integration (`SlogHandler` sends Monogo records to any `slog.Handler`; `MonogoSlogBridge` implements `slog.Handler` using Monogo as the backend).
-- **`adapter/stdlogadapter`**: Provides `NewWriter` and `NewStdLogger` to route standard library `*log.Logger` and `io.Writer` outputs directly into Monogo.
+Standard library integrations reside in separate subpackages under `ext/adapter/`:
+- **`ext/adapter/slogadapter`**: Provides bidirectional `log/slog` integration (`SlogHandler` sends Monogo records to any `slog.Handler`; `MonogoSlogBridge` implements `slog.Handler` using Monogo as the backend).
+- **`ext/adapter/stdlogadapter`**: Provides `NewWriter` and `NewStdLogger` to route standard library `*log.Logger` and `io.Writer` outputs directly into Monogo.
 
 ### Rationale
-By focusing on native standard library interfaces (`log/slog` and `*log.Logger`), Monogo maintains zero third-party dependencies while enabling universal interoperability across the entire Go ecosystem (including third-party loggers like `zerolog` or `zap`, which provide native `slog.Handler` implementations).
+By focusing on native standard library interfaces (`log/slog` and `*log.Logger`), Monogo enables universal interoperability across the entire Go ecosystem (including third-party loggers like `zerolog` or `zap`, which provide native `slog.Handler` implementations) without polluting the core module.
 
 ---
 
@@ -58,17 +69,23 @@ This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering 
 
 ---
 
-## 6. Pipeline & Handlers (`Stream`, `RotatingFile`, `FingersCrossed`, `Deduplication`, `WhatFailureGroup`, `Filter`, `Group`, `Buffer`)
+## 6. Pipeline & Handlers
 
 ### Decision
 Log records flow through the classic Monolog pipeline (IsHandling -> Processors -> Handlers -> Formatters).
-Built-in handlers include:
+
+**Core Handlers (`github.com/githoober/monogo/handler`)**:
 - **`Stream`**: Writes formatted logs to any `io.Writer`.
-- **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
+- **`JSONStream`**: Dedicated stream handler preconfigured with JSON formatting (`NewJSONStream` / `NewJSON`).
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
+- **`Test`**: In-memory record retention for unit test verification.
+- **`Null`**: Consumes and discards records silently.
+
+**Extension Handlers (`github.com/githoober/monogo/ext/handler`)**:
+- **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
 - **`Deduplication`**: Suppresses identical log records that occur within a configurable time window (e.g. 60s) to prevent log flooding during outages.
 - **`WhatFailureGroup`**: Wraps a group of handlers and swallows any errors or panics returned by individual handlers during `Handle`, `HandleBatch`, or `Close`, preventing secondary sink failures from breaking primary logging.
-- **`Filter`**, **`Group`**, **`Buffer`**, **`Null`**, **`Test`**.
+- **`Filter`**, **`Group`**, **`Buffer`**, **`Sampling`**, **`Socket`**.
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
 
@@ -91,6 +108,10 @@ Providing high-utility Monolog handlers allows developers to easily construct pr
 Monogo implements a two-tier processor architecture:
 1. **Logger-Level Processors (`monogo.New(..., processors)` / `logger.PushProcessor(p)`)**: Execute on every record at the logger boundary before any handler is invoked. Ideal for global enrichment (e.g. hostname, process ID, environment tags).
 2. **Per-Handler Processors (`handler.WithProcessor(p...)`)**: Configured at construction time on individual handlers. Handlers implement `monogo.ProcessableHandler` via `handler.BaseHandler`.
+
+Available processors:
+- **Core (`github.com/githoober/monogo/processor`)**: `ProcessId` (`Process`), `Web` (HTTP metadata extraction).
+- **Extension (`github.com/githoober/monogo/ext/processor`)**: `Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`, `Env`, `EnvMap`.
 
 When a handler executes its processor pipeline via `ProcessRecord`:
 - If no processors are configured, the record is returned immediately with zero allocations.

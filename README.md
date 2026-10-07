@@ -5,31 +5,42 @@
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-blue.svg)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A flexible, channel-based generic structured logging library for Go inspired by PHP's Monolog. The core library is completely generic and decoupled from specific logging frameworks, featuring zero external dependencies and native bidirectional interoperability with Go standard library `log/slog` and `*log.Logger`.
+A flexible, channel-based generic structured logging library for Go inspired by PHP's Monolog.
 
-## Features
+Monogo is organized into a lightweight **Core module** with **zero third-party dependencies**, and an optional **Extension module (`ext`)** for advanced handlers, processors, middleware, and standard library adapters.
 
-- **Generic & Backend-Agnostic**: Core Monogo logger operates through generic `Handler`, `Processor`, and `Formatter` interfaces without hard dependencies on any specific backend.
-- **Zero Third-Party Dependencies**: Pure standard library implementation with zero external supply-chain dependencies.
-- **Ambient Context Values**: Attach contextual fields (e.g., request ID, tenant ID, trace ID) to Go's `context.Context` using `monogo.WithContext` / `monogo.WithField`. These fields are automatically extracted and merged into log records on all log methods.
-- **RFC 5424 / Monolog Log Levels**: `DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`.
-- **Channel Support**: Easily categorize logs by channels (e.g. `app`, `auth`, `database`).
-- **Handlers**: Stream, RotatingFile, Deduplication, FingersCrossed, Buffer, Filter, Sampling, Socket, Group, WhatFailureGroup, Test, Null.
-- **Per-Handler Processors**: Dedicated processor pipelines on individual handlers (`handler.WithProcessor(...)`) with copy-on-write record isolation to prevent mutation leakage across handlers.
-- **Handler Bubbling Control**: Stop record propagation down the handler stack via `handler.WithBubble(false)` and the `monogo.Bubbler` interface.
-- **First-Class Batch Processing**: Native `HandleBatch` and `FormatBatch` contracts across handlers and formatters for atomic, single-write flushing from buffering handlers (`Buffer`, `FingersCrossed`).
-- **Resettable Lifecycle**: Modeled after Monolog's `ResettableInterface`, `monogo.Resettable` (`Reset(ctx context.Context) error`) allows loggers, handlers, and processors to reset buffers, re-arm triggers, clear deduplication stores, and regenerate request UIDs between jobs in long-running services.
-- **Processors**: Enriched logging metadata (Caller, Hostname, Process ID/PID, Git build info, Web / HTTP request info, Environment variables, Memory stats, Tags, Unique request ID/UID).
-- **HTTP Middleware**: Standard `net/http` middleware with automatic `X-Request-ID` generation, ambient context binding, latency tracking, and request completion logging.
-- **Formatters**: Line, JSON (with NDJSON and JSON Array batch modes), Logfmt (canonical key=value format).
-- **Backend Integrations**:
-  - `slog` Backend & Bridge (use Monogo as backend for `slog`, or use `slog` as backend handler for Monogo).
-  - Standard Library `*log.Logger` & `io.Writer` Bridge (route `http.Server.ErrorLog` and legacy dependencies into Monogo).
+## Architecture & Modules
+
+- **Core Module (`github.com/githoober/monogo`)**:
+  - **Zero Third-Party Dependencies**: Pure Go standard library implementation.
+  - **Generic Logging Engine**: Backend-agnostic `Handler`, `Processor`, and `Formatter` interfaces.
+  - **Ambient Context Values**: Attach contextual fields to Go's `context.Context` via `monogo.WithContext` / `monogo.WithField`.
+  - **RFC 5424 Log Levels & Channels**: 8 standard severity levels (`DEBUG` through `EMERGENCY`) and first-class channel segregation.
+  - **Core Handlers**: `Stream`, dedicated `JSONStream` (`NewJSONStream` / `NewJSON`), `FingersCrossed`, `Test`, and `Null`.
+  - **Core Processors**: `ProcessId` (`Process`), `Web` (HTTP request metadata extraction).
+  - **Core Formatters**: `Line`, `JSON` (NDJSON & JSON Array batch modes), `Logfmt` (canonical key=value format).
+  - **Batching & Bubbling**: First-class `BatchHandler`, `BatchFormatter`, `Bubbler`, and `Resettable` lifecycle contracts.
+
+- **Extension Module (`github.com/githoober/monogo/ext`)**:
+  - **Advanced Handlers (`ext/handler`)**: `RotatingFile` (rolling log file rotation via `lumberjack.v2`), `Buffer`, `Deduplication`, `Sampling`, `Socket` (TCP/UDP/Unix), `Filter`, `Group`, `WhatFailureGroup`.
+  - **Enriched Processors (`ext/processor`)**: `Caller` (introspection), `Hostname`, `Memory` (runtime stats), `UID` (request IDs), `Git` (build metadata), `Tag`, `Env` / `EnvMap`.
+  - **HTTP Middleware (`ext/middleware`)**: Standard `net/http` middleware with `X-Request-ID` generation, latency tracking, and request logging.
+  - **Standard Library Adapters (`ext/adapter`)**:
+    - `ext/adapter/slogadapter`: Bidirectional `log/slog` backend and bridge.
+    - `ext/adapter/stdlogadapter`: `*log.Logger` and `io.Writer` bridge.
 
 ## Installation
 
+Install the Core module (zero third-party dependencies):
+
 ```bash
 go get github.com/githoober/monogo
+```
+
+Install the Extension module for advanced handlers, processors, adapters, and middleware:
+
+```bash
+go get github.com/githoober/monogo/ext
 ```
 
 ## Quick Start & Ambient Context
@@ -47,13 +58,12 @@ import (
 )
 
 func main() {
-	// Create a stream handler writing to stdout
+	// Create a stream handler writing to stdout (or handler.NewJSONStream for JSON)
 	stdoutHandler := handler.NewStream(os.Stdout, monogo.INFO)
 
-	// Create logger
+	// Create logger with Core ProcessId processor
 	logger := monogo.New("main", []monogo.Handler{stdoutHandler}, []monogo.Processor{
-		processor.Hostname(),
-		processor.UID(),
+		processor.ProcessId(),
 	})
 
 	// Set ambient fields in Go context
@@ -69,9 +79,35 @@ func main() {
 }
 ```
 
-## Log File Rotation (RotatingFile)
+## Dedicated JSONStream Handler (Core)
 
-Monogo provides a RotatingFile handler powered by lumberjack for automatic log file rotation based on file size, backup retention count, age, and optional compression:
+Monogo provides a dedicated `JSONStream` handler in the Core `handler` package (`handler.NewJSONStream` or `handler.NewJSON`). It preconfigures stream output with JSON formatting with zero boilerplate:
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Direct JSON logging to stdout or any io.Writer
+	jsonHandler := handler.NewJSONStream(os.Stdout, monogo.DEBUG)
+	logger := monogo.New("api", []monogo.Handler{jsonHandler}, nil)
+
+	logger.Info(ctx, "Order processed", map[string]interface{}{"order_id": 1001, "amount": 49.99})
+}
+```
+
+## Log File Rotation (RotatingFile - `ext/handler`)
+
+For automatic log file rotation based on file size, backup retention count, age, and optional compression, the `RotatingFile` handler is provided in the `ext` module (powered by `lumberjack`):
 
 ```go
 package main
@@ -80,20 +116,20 @@ import (
 	"context"
 
 	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/formatter"
-	"github.com/githoober/monogo/handler"
 )
 
 func main() {
 	ctx := context.Background()
 
-	// Create a rotating file handler (rotates when log reaches 10MB, keeps 5 backups, retains for 30 days, compresses, formatted as JSON)
-	rotHandler := handler.NewRotatingFile("app.log", monogo.DEBUG,
-		handler.WithMaxSize(10),
-		handler.WithMaxBackups(5),
-		handler.WithMaxAge(30),
-		handler.WithCompress(true),
-		handler.WithFormatter(formatter.NewJSON("")),
+	// Create a rotating file handler (rotates at 10MB, retains 5 backups for 30 days, compressed)
+	rotHandler := exthandler.NewRotatingFile("app.log", monogo.DEBUG,
+		exthandler.WithMaxSize(10),
+		exthandler.WithMaxBackups(5),
+		exthandler.WithMaxAge(30),
+		exthandler.WithCompress(true),
+		exthandler.WithFormatter(formatter.NewJSON("")),
 	)
 	defer rotHandler.Close(ctx)
 
@@ -102,9 +138,9 @@ func main() {
 }
 ```
 
-## FingersCrossed Handler
+## FingersCrossed Handler (Core)
 
-The FingersCrossed handler buffers all low-level logs (such as DEBUG or INFO) silently and only flushes the entire buffer to a nested handler when a log record meets a specific action level (such as ERROR). Once triggered, it stays activated for subsequent logs.
+The `FingersCrossed` handler is included directly in the Core `handler` package (`github.com/githoober/monogo/handler`) with zero third-party dependencies. It buffers all low-level logs (such as DEBUG or INFO) silently and only flushes the entire buffer to a nested handler when a log record meets a specific action level (such as ERROR). Once triggered, it stays activated for subsequent logs.
 
 ```go
 import (
@@ -130,7 +166,7 @@ logger.Info(ctx, "Step 2 processing")   // Buffered silently
 logger.Error(ctx, "Step 3 failed!")     // Triggers flush: prints Step 1, Step 2, and Step 3
 ```
 
-## Deduplication Handler
+## Deduplication Handler (`ext/handler`)
 
 The `Deduplication` handler suppresses duplicate log records that occur within a configurable time window (default 60 seconds). Records with level >= `dedupLevel` (default `ERROR`) are deduplicated, while records below `dedupLevel` pass through unconditionally. This protects logging and notification sinks from flood exhaustion during outages or retry storms.
 
@@ -141,6 +177,7 @@ import (
 	"time"
 
 	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/handler"
 )
 
@@ -149,7 +186,7 @@ ctx := context.Background()
 streamHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
 
 // Deduplicate identical ERROR+ logs within a 60-second window
-dedupHandler := handler.NewDeduplication(streamHandler, monogo.ERROR, 60*time.Second)
+dedupHandler := exthandler.NewDeduplication(streamHandler, monogo.ERROR, 60*time.Second)
 
 logger := monogo.New("app", []monogo.Handler{dedupHandler}, nil)
 
@@ -158,11 +195,11 @@ logger.Error(ctx, "Database connection lost") // Suppressed (duplicate within 60
 logger.Info(ctx, "User clicked button")       // Emitted (below dedupLevel)
 ```
 
-## WhatFailureGroup Handler
+## WhatFailureGroup Handler (`ext/handler`)
 
 Inspired by PHP Monolog's `WhatFailureGroupHandler`, the `WhatFailureGroup` handler wraps a slice of handlers and suppresses any errors or panics returned by individual sub-handlers during `Handle`, `HandleBatch`, or `Close`. This guarantees that failures in secondary or external logging sinks (e.g., Slack webhooks, remote log aggregators, or Elasticsearch) never interrupt critical file/console logging or fail caller operations.
 
-An optional error callback can be attached via `handler.WithWhatFailureCallback` to inspect and monitor suppressed errors (e.g., for metrics or diagnostics) without bubbling them to the caller:
+An optional error callback can be attached via `exthandler.WithWhatFailureCallback` to inspect and monitor suppressed errors (e.g., for metrics or diagnostics) without bubbling them to the caller:
 
 ```go
 import (
@@ -170,6 +207,7 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/handler"
 )
 
@@ -179,12 +217,12 @@ primaryFile, _ := os.OpenFile("app.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 06
 primaryHandler := handler.NewStream(primaryFile, monogo.INFO)
 
 // Wrap non-critical or remote handlers in WhatFailureGroup
-resilientGroup := handler.NewWhatFailureGroup(
+resilientGroup := exthandler.NewWhatFailureGroup(
 	[]monogo.Handler{
 		slackWebhookHandler,
 		elasticsearchHandler,
 	},
-	handler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
+	exthandler.WithWhatFailureCallback(func(err error, h monogo.Handler) {
 		// Log or record metrics for external sink failures without failing the caller
 		metrics.Increment("logger.secondary_sink_failure")
 	}),
@@ -196,9 +234,9 @@ logger := monogo.New("app", []monogo.Handler{primaryHandler, resilientGroup}, ni
 logger.Error(ctx, "Payment transaction failed")
 ```
 
-## Sampling Handler
+## Sampling Handler (`ext/handler`)
 
-Inspired by PHP Monolog's `SamplingHandler`, the `Sampling` handler downsamples high-throughput log traffic based on a 1-in-N sampling factor (e.g., factor `10` emits approximately 10% of records). To prevent losing critical operational errors, `handler.WithSamplingThreshold` allows logs at or above a specified severity level (e.g. `ERROR`) to completely bypass sampling:
+Inspired by PHP Monolog's `SamplingHandler`, the `Sampling` handler downsamples high-throughput log traffic based on a 1-in-N sampling factor (e.g., factor `10` emits approximately 10% of records). To prevent losing critical operational errors, `exthandler.WithSamplingThreshold` allows logs at or above a specified severity level (e.g. `ERROR`) to completely bypass sampling:
 
 ```go
 import (
@@ -206,6 +244,7 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/handler"
 )
 
@@ -214,10 +253,10 @@ ctx := context.Background()
 stdoutHandler := handler.NewStream(os.Stdout, monogo.DEBUG)
 
 // Sample DEBUG and INFO logs 1-in-10 (10%), but always emit ERROR+ logs (100%)
-samplingHandler := handler.NewSampling(
+samplingHandler := exthandler.NewSampling(
 	stdoutHandler,
 	10,
-	handler.WithSamplingThreshold(monogo.ERROR),
+	exthandler.WithSamplingThreshold(monogo.ERROR),
 )
 
 logger := monogo.New("app", []monogo.Handler{samplingHandler}, nil)
@@ -226,7 +265,7 @@ logger.Debug(ctx, "High volume trace")  // Emitted with 10% probability
 logger.Error(ctx, "Critical failure")    // Always emitted (bypasses sampling)
 ```
 
-## Socket Handler
+## Socket Handler (`ext/handler`)
 
 Modeled after PHP Monolog's `SocketHandler`, the `Socket` handler writes formatted log records over network sockets (TCP, UDP, or Unix domain sockets). It features automatic reconnection, customizable dial/write timeouts, and `Resettable` lifecycle support:
 
@@ -236,20 +275,20 @@ import (
 	"time"
 
 	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/formatter"
-	"github.com/githoober/monogo/handler"
 )
 
 ctx := context.Background()
 
 // Stream logs over TCP to Logstash / remote syslog / aggregator
-socketHandler := handler.NewSocket(
+socketHandler := exthandler.NewSocket(
 	"tcp",
 	"10.0.0.50:5000",
 	monogo.INFO,
-	handler.WithFormatter(formatter.NewJSON("")),
-	handler.WithWriteTimeout(3*time.Second),
-	handler.WithDialTimeout(5*time.Second),
+	exthandler.WithFormatter(formatter.NewJSON("")),
+	exthandler.WithWriteTimeout(3*time.Second),
+	exthandler.WithDialTimeout(5*time.Second),
 )
 defer socketHandler.Close(ctx)
 
@@ -287,8 +326,8 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
+	extprocessor "github.com/githoober/monogo/ext/processor"
 	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/processor"
 )
 
 ctx := context.Background()
@@ -298,7 +337,7 @@ auditFile, _ := os.OpenFile("audit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 06
 auditHandler := handler.NewStream(
 	auditFile,
 	monogo.INFO,
-	handler.WithProcessor(processor.Tag("destination", "audit_trail")),
+	handler.WithProcessor(extprocessor.Tag("destination", "audit_trail")),
 )
 
 // Console handler receives records without the audit tag
@@ -313,19 +352,23 @@ When per-handler processors are configured, the record is automatically cloned p
 
 ## Built-in Processors
 
-Processors enrich log records with contextual and system diagnostic metadata before formatting and dispatching. Monogo includes the following built-in processors:
+Processors enrich log records with contextual and system diagnostic metadata before formatting and dispatching.
 
-### Core Monolog Ports
+### Core Processors (`github.com/githoober/monogo/processor`)
+
+Zero external dependencies, always available in core:
+- **`processor.ProcessId()`** (or `processor.Process()`): Injects current OS process ID (`os.Getpid()`) into `Extra["pid"]` (Monolog `ProcessIdProcessor`).
+- **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` from context (Monolog `WebProcessor`). Use `processor.WithHTTPRequest(ctx, req)` to attach the HTTP request to the context.
+
+### Extension Processors (`github.com/githoober/monogo/ext/processor`)
+
+Extended diagnostic processors in the `ext` module:
 - **`processor.Caller(skipFrames)`**: Injects calling source file, line number, and function name into `Extra["caller"]` (Monolog `IntrospectionProcessor`).
 - **`processor.Hostname()`**: Injects the OS hostname into `Extra["hostname"]` (Monolog `HostnameProcessor`).
-- **`processor.ProcessId()`**: Injects the current OS process ID (`os.Getpid()`) into `Extra["pid"]` (Monolog `ProcessIdProcessor`).
 - **`processor.Memory()`**: Injects runtime memory allocation statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes`) into `Extra["memory"]` (Monolog `MemoryProcessor` / `MemoryUsageProcessor`).
 - **`processor.UID(length...)`**: Injects a unique identifier string into `Extra["uid"]` that remains constant across log records and regenerates a fresh UID when `Reset(ctx)` is invoked (Monolog `UidProcessor`, implements `monogo.Resettable`).
 - **`processor.Git(configs...)`**: Automatically discovers and injects Git commit hash, branch, time, and dirty status into `Extra["git"]` (Monolog `GitProcessor`, via Go's `runtime/debug.ReadBuildInfo()` or environment variables).
 - **`processor.Tag(key, value)`**: Injects fixed key-value tags into `Record.Extra` (Monolog `TagProcessor`).
-- **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` (Monolog `WebProcessor`).
-
-### Monogo Extensions
 - **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
 - **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
 
@@ -333,19 +376,19 @@ Processors enrich log records with contextual and system diagnostic metadata bef
 
 Buffering handlers accumulate log entries and flush them via `monogo.BatchHandler` and `monogo.BatchFormatter`. Handlers that support optimized batch emission receive batches directly via `HandleBatch`, while standard handlers gracefully receive records via `Handle` without requiring iteration boilerplate:
 
-### 1. `Buffer` Handler
+### 1. `Buffer` Handler (`ext/handler`)
 Buffers entries until a capacity limit is reached or a flush level is triggered:
 
 ```go
 // Buffer up to 100 entries, flushing immediately if an ERROR occurs
 fileHandler := handler.NewStream(file, monogo.DEBUG)
-bufferHandler := handler.NewBuffer(fileHandler, 100, monogo.ERROR)
+bufferHandler := exthandler.NewBuffer(fileHandler, 100, monogo.ERROR)
 
 logger := monogo.New("app", []monogo.Handler{bufferHandler}, nil)
 defer logger.Close(ctx) // Flushes remaining buffered logs on shutdown
 ```
 
-### 2. `FingersCrossed` Handler
+### 2. `FingersCrossed` Handler (Core)
 Buffers low-severity logs (e.g. `DEBUG`, `INFO`) and only flushes them if an action level (e.g. `ERROR`) is reached:
 
 ```go
@@ -397,8 +440,8 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
+	extprocessor "github.com/githoober/monogo/ext/processor"
 	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/processor"
 )
 
 func main() {
@@ -409,7 +452,7 @@ func main() {
 	fcH := handler.NewFingersCrossed(streamH, monogo.ERROR, 100)
 
 	logger := monogo.New("worker", []monogo.Handler{fcH}, []monogo.Processor{
-		processor.UID(), // Injects unique trace UID per cycle
+		extprocessor.UID(), // Injects unique trace UID per cycle
 	})
 
 	// Process jobs in a worker loop
@@ -503,7 +546,7 @@ func main() {
 }
 ```
 
-## Using log/slog Backend
+## Using log/slog Backend (`ext/adapter/slogadapter`)
 
 ### 1. Send Monogo Logs to log/slog
 
@@ -514,7 +557,7 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/slogadapter"
+	"github.com/githoober/monogo/ext/adapter/slogadapter"
 )
 
 ctx := context.Background()
@@ -530,9 +573,10 @@ logger.Info(ctx, "Logged via slog backend", map[string]interface{}{"env": "produ
 ```go
 import (
 	"log/slog"
+	"os"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/slogadapter"
+	"github.com/githoober/monogo/ext/adapter/slogadapter"
 	"github.com/githoober/monogo/handler"
 )
 
@@ -545,9 +589,9 @@ slog.SetDefault(slog.New(slogadapter.NewMonogoSlogBridge(monoLogger)))
 slog.Info("Hello from stdlib slog!", "key", "value")
 ```
 
-## Using Standard Library Bridge (*log.Logger & io.Writer)
+## Using Standard Library Bridge (*log.Logger & io.Writer - `ext/adapter/stdlogadapter`)
 
-To integrate Monogo with standard library servers (such as `http.Server.ErrorLog`), database drivers, or legacy Go packages that write to an `io.Writer` or standard library `*log.Logger`, the `adapter/stdlogadapter` package routes incoming log lines into a `*monogo.Logger` at a designated level:
+To integrate Monogo with standard library servers (such as `http.Server.ErrorLog`), database drivers, or legacy Go packages that write to an `io.Writer` or standard library `*log.Logger`, the `ext/adapter/stdlogadapter` package routes incoming log lines into a `*monogo.Logger` at a designated level:
 
 ```go
 import (
@@ -556,7 +600,7 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/stdlogadapter"
+	"github.com/githoober/monogo/ext/adapter/stdlogadapter"
 	"github.com/githoober/monogo/handler"
 )
 
@@ -573,9 +617,9 @@ server := &http.Server{
 writer := stdlogadapter.NewWriter(ctx, logger, monogo.INFO)
 ```
 
-## HTTP Middleware & WebProcessor
+## HTTP Middleware (`ext/middleware`) & WebProcessor (Core)
 
-Monogo includes an idiomatic Go `net/http` middleware (`middleware.HTTP`) and a Monolog-compatible `processor.Web`:
+Monogo includes an idiomatic Go `net/http` middleware (`ext/middleware.HTTP`) and a Monolog-compatible `processor.Web` in Core:
 - **`middleware.HTTP`**: Intercepts requests, automatically assigns/propagates `X-Request-ID`, extracts request metadata into ambient context via `processor.WithHTTPRequest`, records response status codes, latency, and bytes written, and logs request completions.
 - **`processor.Web`**: Injects request attributes (`url`, `ip`, `http_method`, `server`, `referrer`, `user_agent`) into `Record.Extra` from request context.
 
@@ -587,8 +631,8 @@ import (
 	"os"
 
 	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/ext/middleware"
 	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/middleware"
 	"github.com/githoober/monogo/processor"
 )
 
@@ -623,29 +667,30 @@ func main() {
 
 ## Testing & Continuous Integration
 
-Monogo enforces strict quality standards via automated GitHub Actions CI and local tooling:
+Monogo enforces strict quality standards across both the Core (`.`) and Extension (`./ext`) modules via automated GitHub Actions CI and local tooling:
 
 ### Unit Tests, Coverage & Race Detection
-Run tests across all packages with coverage profiling and race detection:
+Run tests across both modules with coverage profiling and race detection:
 ```bash
-go test -v -race -count=1 -coverprofile=coverage.out ./...
-go tool cover -func=coverage.out
+go test -v -race -count=1 ./... ./ext/...
 ```
 
 ### Deadcode Analysis
-Verify zero dead or unreachable code using Go's official reachability analyzer:
+Verify zero dead or unreachable code across both modules using Go's official reachability analyzer:
 ```bash
-go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...
+go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./... ./ext/...
 ```
 
 ### Linting (`golangci-lint` v2.14)
-Run static analysis configured in `.golangci.yml` (enforces `staticcheck`, `errcheck`, `govet`, `ineffassign`, `unused`):
+Run static analysis configured in `.golangci.yml` across both modules:
 ```bash
-golangci-lint run
+golangci-lint run ./...
+(cd ext && golangci-lint run ./...)
 ```
 
 ### GitHub Actions CI
 The CI workflow defined in `.github/workflows/ci.yml` runs on every push and pull request to `main`, validating:
-- **Test:** `go mod verify`, `go vet`, and tests with coverage
-- **Deadcode:** call graph reachability analysis with zero allowable dead code
-- **GolangCI-Lint:** automated multi-linter verification via `golangci-lint-action`
+- **Test:** `go mod verify`, `go vet`, and tests with race detection across `./...` and `./ext/...`
+- **Deadcode:** reachability analysis with zero allowable dead code across `./...` and `./ext/...`
+- **GolangCI-Lint:** automated multi-linter verification for both modules via `golangci-lint-action`
+

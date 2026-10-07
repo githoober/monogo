@@ -36,15 +36,10 @@ var (
 // NewSocket creates a Socket handler that writes formatted records to network and address at or above minLevel.
 // Supported networks include "tcp", "udp", "unix", etc.
 func NewSocket(network, address string, minLevel monogo.Level, opts ...Option) *Socket {
-	o := defaultOptions()
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
-
+	base, o := newBaseHandler(minLevel, opts...)
 	if o.formatter == nil {
-		o.formatter = formatter.NewLine("", "")
+		opts = append([]Option{WithFormatter(formatter.NewLine("", ""))}, opts...)
+		base, o = newBaseHandler(minLevel, opts...)
 	}
 
 	dialTimeout := 5 * time.Second
@@ -65,18 +60,14 @@ func NewSocket(network, address string, minLevel monogo.Level, opts ...Option) *
 		}
 	}
 
-	h := &Socket{
-		BaseHandler:  NewBaseHandler(minLevel, opts...),
+	return &Socket{
+		BaseHandler:  base,
 		network:      network,
 		address:      address,
 		dialTimeout:  dialTimeout,
 		writeTimeout: writeTimeout,
 		dialer:       dialer,
 	}
-	if h.formatter == nil {
-		h.formatter = formatter.NewLine("", "")
-	}
-	return h
 }
 
 // connect ensures an active connection is established. Caller must hold s.mu.
