@@ -12,15 +12,15 @@ In PHP Monolog, handlers dictate how log records are handled and emitted. In Go,
 
 ---
 
-## 2. Pluggable Backend Adapters (`adapter/`)
+## 2. Pluggable Standard Library Adapters (`adapter/`)
 
 ### Decision
-Framework-specific integrations reside in separate subpackages under `adapter/`:
-- **`adapter/slogadapter`**: Provides `SlogHandler` (sends Monogo records to any `slog.Handler`) and `MonogoSlogBridge` (implements `slog.Handler` using Monogo as backend).
-- **`adapter/zerologadapter`**: Provides `ZerologHandler` (routes Monogo records to `zerolog.Logger`).
+Standard library integrations reside in separate subpackages under `adapter/`:
+- **`adapter/slogadapter`**: Provides bidirectional `log/slog` integration (`SlogHandler` sends Monogo records to any `slog.Handler`; `MonogoSlogBridge` implements `slog.Handler` using Monogo as the backend).
+- **`adapter/stdlogadapter`**: Provides `NewWriter` and `NewStdLogger` to route standard library `*log.Logger` and `io.Writer` outputs directly into Monogo.
 
 ### Rationale
-Subpackages keep dependencies isolated so consumers importing only core Monogo do not pull in unused third-party dependencies.
+By focusing on native standard library interfaces (`log/slog` and `*log.Logger`), Monogo maintains zero third-party dependencies while enabling universal interoperability across the entire Go ecosystem (including third-party loggers like `zerolog` or `zap`, which provide native `slog.Handler` implementations).
 
 ---
 
@@ -54,7 +54,7 @@ This matches Monolog's channel-centric logging model (e.g., separating `app`, `a
 Monogo implements RFC 5424 log levels (`DEBUG`, `INFO`, `NOTICE`, `WARNING`, `ERROR`, `CRITICAL`, `ALERT`, `EMERGENCY`) as an integer-backed `Level` type with integer steps of 100.
 
 ### Rationale
-This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering while offering conversion helpers to map to Go `log/slog` levels (`DEBUG`, `INFO`, `WARN`, `ERROR`) and `zerolog` levels.
+This matches PHP Monolog's level hierarchy, allowing fine-grained log filtering while offering conversion helpers to map to Go `log/slog` levels (`DEBUG`, `INFO`, `WARN`, `ERROR`).
 
 ---
 

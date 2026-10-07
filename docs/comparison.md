@@ -110,7 +110,6 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
   - Framework-specific integrations live in isolated subpackages:
     - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
     - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
-    - `adapter/zerologadapter.New`: Routes Monogo log records to `rs/zerolog`.
     - `adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
   - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 
@@ -180,4 +179,4 @@ Several PHP Monolog and PSR-3 features were intentionally omitted from Monogo du
 | **Two-Tier Processors** | Logger-level & Per-Handler processors with copy-on-write isolation | Not built-in | Hooks (global only) | Not built-in | Hooks |
 | **Propagation Control** | Bubbling control (`handler.WithBubble(false)`) | Not built-in | Not built-in | Not built-in | Not built-in |
 | **Formatters** | Segregated `Formatter` & `BatchFormatter` (`Line`, `JSON`, `Logfmt`) | `TextHandler` / `JSONHandler` | `Formatter` (`Text`, `JSON`) | Encoders | Console / JSON |
-| **Interoperability** | Bidirectional `slog` bridge + `zerolog` adapter | Native | Via wrappers | Via `zapio` | Native |
+| **Interoperability** | Bidirectional `slog` bridge + stdlib `*log.Logger` / `io.Writer` bridge | Native | Via wrappers | Via `zapio` | Native |
