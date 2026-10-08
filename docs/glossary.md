@@ -21,11 +21,13 @@ A destination component responsible for receiving a `Record` and outputting or f
 - **Core Handlers (`github.com/githoober/monogo/handler`)**:
   - `Stream`: Writes to `io.Writer` (console, files).
   - `JSONStream`: Dedicated stream handler preconfigured with JSON formatting (`NewJSONStream` / `NewJSON`).
+  - `RotatingFile`: Writes to rotating files using pure standard library (size, daily, backups, gzip compression, max age).
+  - `RotatingJSONFile`: Dedicated rotating file handler preconfigured with JSON formatting (`NewRotatingJSONFile` / `NewJSONRotatingFile`).
   - `FingersCrossed`: Buffers logs until triggered by an action level (e.g. `ERROR`).
   - `Test`: Retains records in memory for assertions during tests.
   - `Null`: Consumes and discards records silently.
 - **Extension Handlers (`github.com/githoober/monogo/ext/handler`)**:
-  - `RotatingFile`: Rotates log files based on size/age using `lumberjack.v2`.
+  - `RotatingFile`: Alternate rotating file handler powered by `lumberjack.v2`.
   - `Buffer`: Buffers records until capacity or flush level.
   - `Deduplication`: Suppresses duplicate log records occurring within a time window.
   - `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.

@@ -21,11 +21,18 @@ type options struct {
 	bubble     bool
 	formatter  monogo.Formatter
 	processors []monogo.Processor
+	maxSize    int64
+	maxBackups int
+	maxAgeDays int
+	compress   bool
+	daily      bool
 }
 
 func defaultOptions() options {
 	return options{
-		bubble: true,
+		bubble:     true,
+		maxSize:    10 * 1024 * 1024, // 10MB default
+		maxBackups: 5,
 	}
 }
 
@@ -60,6 +67,53 @@ func WithProcessor(processors ...monogo.Processor) Option {
 // WithProcessors is an alias for WithProcessor to configure multiple processors at construction time.
 func WithProcessors(processors ...monogo.Processor) Option {
 	return WithProcessor(processors...)
+}
+
+// WithMaxSize sets the maximum file size in bytes before rotating (default: 10MB).
+func WithMaxSize(maxBytes int64) Option {
+	return func(o *options) {
+		o.maxSize = maxBytes
+	}
+}
+
+// WithMaxSizeMB sets the maximum file size in megabytes before rotating.
+func WithMaxSizeMB(maxMB int) Option {
+	return func(o *options) {
+		o.maxSize = int64(maxMB) * 1024 * 1024
+	}
+}
+
+// WithMaxBackups sets the maximum number of backup files to retain (default: 5).
+func WithMaxBackups(maxBackups int) Option {
+	return func(o *options) {
+		o.maxBackups = maxBackups
+	}
+}
+
+// WithMaxAgeDays sets the maximum age in days before old backup files are removed.
+func WithMaxAgeDays(maxAgeDays int) Option {
+	return func(o *options) {
+		o.maxAgeDays = maxAgeDays
+	}
+}
+
+// WithMaxAge is an alias for WithMaxAgeDays.
+func WithMaxAge(maxAgeDays int) Option {
+	return WithMaxAgeDays(maxAgeDays)
+}
+
+// WithCompress sets whether rotated backup files should be compressed with gzip.
+func WithCompress(compress bool) Option {
+	return func(o *options) {
+		o.compress = compress
+	}
+}
+
+// WithDailyRotation sets whether log files should rotate daily when the calendar date changes.
+func WithDailyRotation(daily bool) Option {
+	return func(o *options) {
+		o.daily = daily
+	}
 }
 
 // NewBaseHandler initializes a BaseHandler with optional configuration options.

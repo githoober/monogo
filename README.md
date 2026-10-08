@@ -105,9 +105,43 @@ func main() {
 }
 ```
 
-## Log File Rotation (RotatingFile - `ext/handler`)
+## Rotating JSON File & Log File Rotation (Core: Zero Dependencies)
 
-For automatic log file rotation based on file size, backup retention count, age, and optional compression, the `RotatingFile` handler is provided in the `ext` module (powered by `lumberjack`):
+For automatic log file rotation based on file size, backup retention count, max age, and optional compression, Monogo Core provides pure standard library implementations (`github.com/githoober/monogo/handler`) with **zero third-party dependencies**:
+- **`handler.RotatingJSONFile`** (`handler.NewRotatingJSONFile` / `handler.NewJSONRotatingFile`): Dedicated rotating file handler pre-configured for structured JSON output.
+- **`handler.RotatingFile`** (`handler.NewRotatingFile`): Standard rotating file handler configurable with any formatter (Line, JSON, Logfmt).
+- **`handler.RotatingFileWriter`** (`handler.NewRotatingFileWriter`): Underlying thread-safe `io.WriteCloser` providing size rotation, backup count retention, age purging, and gzip compression (`compress/gzip`).
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/handler"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Pure stdlib JSON log file with rotation (10MB limit, 5 backups, gzip compression, 30 days retention)
+	rotJSONHandler := handler.NewRotatingJSONFile("logs/app.log", monogo.DEBUG,
+		handler.WithMaxSizeMB(10),
+		handler.WithMaxBackups(5),
+		handler.WithMaxAgeDays(30),
+		handler.WithCompress(true),
+	)
+	defer rotJSONHandler.Close(ctx)
+
+	logger := monogo.New("app", []monogo.Handler{rotJSONHandler}, nil)
+	logger.Info(ctx, "Order processed", map[string]interface{}{"order_id": 42, "amount": 99.5})
+}
+```
+
+### Lumberjack-Backed Rotation (`ext/handler`)
+
+For applications preferring `gopkg.in/natefinch/lumberjack.v2`, the `ext` module also provides an alternate `RotatingFile` handler:
 
 ```go
 package main
@@ -123,7 +157,6 @@ import (
 func main() {
 	ctx := context.Background()
 
-	// Create a rotating file handler (rotates at 10MB, retains 5 backups for 30 days, compressed)
 	rotHandler := exthandler.NewRotatingFile("app.log", monogo.DEBUG,
 		exthandler.WithMaxSize(10),
 		exthandler.WithMaxBackups(5),
@@ -134,7 +167,7 @@ func main() {
 	defer rotHandler.Close(ctx)
 
 	logger := monogo.New("app", []monogo.Handler{rotHandler}, nil)
-	logger.Info(ctx, "App initialized with rolling log files")
+	logger.Info(ctx, "App initialized with lumberjack rolling log files")
 }
 ```
 

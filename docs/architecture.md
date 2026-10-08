@@ -9,7 +9,7 @@ The repository is split into two decoupled Go modules:
 1. **Core Module (`github.com/githoober/monogo`)**:
    - Strictly backend-agnostic with **100% zero third-party dependencies** (relies entirely on Go standard library).
    - Defines core interfaces (`Handler`, `BatchHandler`, `Bubbler`, `ProcessableHandler`, `Resettable`, `Processor`, `ProcessorFunc`, `Formatter`, `BatchFormatter`) and data structures (`Record`, `Level`).
-   - Contains core handlers (`Stream`, dedicated `JSONStream` via `handler.NewJSONStream` / `handler.NewJSON`, `FingersCrossed`, `Test`, `Null`).
+   - Contains core handlers (`Stream`, dedicated `JSONStream` via `handler.NewJSONStream` / `handler.NewJSON`, pure stdlib `RotatingFile`, `RotatingJSONFile`, `FingersCrossed`, `Test`, `Null`).
    - Contains core formatters (`Line`, `JSON`, `Logfmt`).
    - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor, `Env` / `EnvMap` environment variable extractor).
 2. **Extension Module (`github.com/githoober/monogo/ext`)**:
@@ -77,6 +77,8 @@ Log records flow through the classic Monolog pipeline (IsHandling -> Processors 
 **Core Handlers (`github.com/githoober/monogo/handler`)**:
 - **`Stream`**: Writes formatted logs to any `io.Writer`.
 - **`JSONStream`**: Dedicated stream handler preconfigured with JSON formatting (`NewJSONStream` / `NewJSON`).
+- **`RotatingFile`**: Writes logs to rotating files with size limits, backup retention, daily rollover, and gzip compression using pure Go standard library.
+- **`RotatingJSONFile`**: Dedicated rotating file handler preconfigured with JSON formatting (`NewRotatingJSONFile` / `NewJSONRotatingFile`).
 - **`FingersCrossed`**: Buffers low-level logs until an action level (e.g., `ERROR`) triggers flushing all buffered logs.
 - **`Test`**: In-memory record retention for unit test verification.
 - **`Null`**: Consumes and discards records silently.
