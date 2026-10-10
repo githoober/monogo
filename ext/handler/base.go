@@ -29,6 +29,7 @@ type options struct {
 	dedupKeyFunc        func(monogo.Record) string
 	dedupStore          DeduplicationStore
 	whatFailureCallback func(error, monogo.Handler)
+	fallbackCallback    func(error, monogo.Handler)
 	resetErrorCallback  func(error)
 	sampler             func() bool
 	samplingThreshold   *monogo.Level
@@ -100,6 +101,16 @@ func WithProcessors(processors ...monogo.Processor) Option {
 func WithResetErrorCallback(fn func(error)) Option {
 	return func(o *options) {
 		o.resetErrorCallback = fn
+	}
+}
+
+// FallbackCallback is invoked when an inner handler in FallbackGroup encounters an error or panic and fallback occurs.
+type FallbackCallback func(err error, failedHandler monogo.Handler)
+
+// WithFallbackCallback registers a callback invoked when a fallback handler fails and execution falls back to the next handler.
+func WithFallbackCallback(fn FallbackCallback) Option {
+	return func(o *options) {
+		o.fallbackCallback = fn
 	}
 }
 
