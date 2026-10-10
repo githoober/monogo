@@ -75,16 +75,5 @@ func NewRotatingFile(filename string, level monogo.Level, opts ...Option) *coreh
 		Compress:   o.compress,
 	}
 
-	var coreOpts []corehandler.Option
-	if !o.bubble {
-		coreOpts = append(coreOpts, corehandler.WithBubble(false))
-	}
-	if o.formatter != nil {
-		coreOpts = append(coreOpts, corehandler.WithFormatter(o.formatter))
-	}
-	if len(o.processors) > 0 {
-		coreOpts = append(coreOpts, corehandler.WithProcessors(o.processors...))
-	}
-
-	return corehandler.NewStream(lj, level, coreOpts...)
+	return corehandler.NewStream(lj, level, toCoreOptions(o)...)
 }

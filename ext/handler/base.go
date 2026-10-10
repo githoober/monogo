@@ -45,13 +45,7 @@ func defaultOptions() options {
 	}
 }
 
-func newBaseHandler(level monogo.Level, opts ...Option) (corehandler.BaseHandler, options) {
-	o := defaultOptions()
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
+func toCoreOptions(o options) []corehandler.Option {
 	var coreOpts []corehandler.Option
 	if !o.bubble {
 		coreOpts = append(coreOpts, corehandler.WithBubble(false))
@@ -62,7 +56,17 @@ func newBaseHandler(level monogo.Level, opts ...Option) (corehandler.BaseHandler
 	if len(o.processors) > 0 {
 		coreOpts = append(coreOpts, corehandler.WithProcessors(o.processors...))
 	}
-	return corehandler.NewBaseHandler(level, coreOpts...), o
+	return coreOpts
+}
+
+func newBaseHandler(level monogo.Level, opts ...Option) (corehandler.BaseHandler, options) {
+	o := defaultOptions()
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return corehandler.NewBaseHandler(level, toCoreOptions(o)...), o
 }
 
 // WithBubble configures whether the handler allows record bubbling down the stack.
@@ -136,10 +140,6 @@ func WithDialer(fn func(ctx context.Context, network, address string) (net.Conn,
 
 // NewTest creates a Test handler for assertions in tests.
 func NewTest(level monogo.Level, opts ...Option) *corehandler.Test {
-	base, _ := newBaseHandler(level, opts...)
-	var coreOpts []corehandler.Option
-	if !base.Bubble() {
-		coreOpts = append(coreOpts, corehandler.WithBubble(false))
-	}
-	return corehandler.NewTest(level, coreOpts...)
+	_, o := newBaseHandler(level, opts...)
+	return corehandler.NewTest(level, toCoreOptions(o)...)
 }

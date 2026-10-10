@@ -1584,3 +1584,44 @@ func TestHandlerLifecycleAndReachability(t *testing.T) {
 		t.Errorf("expected rotH.IsHandling to be true")
 	}
 }
+
+func TestNewTest_OptionsForwarding(t *testing.T) {
+	proc := monogo.ProcessorFunc(func(rec monogo.Record) monogo.Record {
+		if rec.Extra == nil {
+			rec.Extra = make(map[string]interface{})
+		}
+		rec.Extra["injected"] = "test-val"
+		return rec
+	})
+	fmt := formatter.NewLine("", "")
+
+	testH := handler.NewTest(monogo.DEBUG,
+		handler.WithBubble(false),
+		handler.WithFormatter(fmt),
+		handler.WithProcessor(proc),
+	)
+
+	if testH.Bubble() {
+		t.Errorf("expected Bubble() to be false")
+	}
+	if testH.Formatter() != fmt {
+		t.Errorf("expected Formatter() to match provided formatter")
+	}
+	if len(testH.Processors()) != 1 {
+		t.Fatalf("expected 1 processor, got %d", len(testH.Processors()))
+	}
+
+	ctx := t.Context()
+	rec := monogo.Record{Message: "hello", Level: monogo.INFO}
+	if err := testH.Handle(ctx, rec); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	records := testH.Records()
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Extra["injected"] != "test-val" {
+		t.Errorf("expected processor to inject 'test-val', got %v", records[0].Extra["injected"])
+	}
+}
