@@ -32,12 +32,7 @@ func NewSampling(inner monogo.Handler, factor int, opts ...Option) *Sampling {
 		factor = 1
 	}
 
-	o := defaultOptions()
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
+	base, o := newBaseHandler(monogo.DEBUG, opts...)
 
 	sampler := o.sampler
 	if sampler == nil {
@@ -51,7 +46,7 @@ func NewSampling(inner monogo.Handler, factor int, opts ...Option) *Sampling {
 	}
 
 	s := &Sampling{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler: base,
 		handler:     inner,
 		factor:      factor,
 		sampler:     sampler,

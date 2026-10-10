@@ -8,9 +8,10 @@ import (
 	"testing"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/slogadapter"
+	"github.com/githoober/monogo/ext/adapter/slogadapter"
+	exthandler "github.com/githoober/monogo/ext/handler"
+	"github.com/githoober/monogo/ext/processor"
 	"github.com/githoober/monogo/handler"
-	"github.com/githoober/monogo/processor"
 )
 
 func TestSlogHandler(t *testing.T) {
@@ -211,7 +212,7 @@ func TestSlogHandlerWithBufferFallback(t *testing.T) {
 	var buf bytes.Buffer
 	slogH := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
 	monoH := slogadapter.NewSlogHandler(slogH, monogo.DEBUG)
-	bufH := handler.NewBuffer(monoH, 2, monogo.ERROR)
+	bufH := exthandler.NewBuffer(monoH, 2, monogo.ERROR)
 
 	_ = bufH.Handle(context.Background(), monogo.Record{Message: "buffered 1", Level: monogo.INFO})
 	_ = bufH.Handle(context.Background(), monogo.Record{Message: "buffered 2", Level: monogo.INFO})

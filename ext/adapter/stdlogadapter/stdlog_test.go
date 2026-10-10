@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/githoober/monogo"
-	"github.com/githoober/monogo/adapter/stdlogadapter"
+	"github.com/githoober/monogo/ext/adapter/stdlogadapter"
 	"github.com/githoober/monogo/handler"
 )
 

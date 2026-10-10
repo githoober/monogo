@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/ext/handler"
 	"github.com/githoober/monogo/formatter"
-	"github.com/githoober/monogo/handler"
 )
 
 func TestSocketHandler_TCP(t *testing.T) {

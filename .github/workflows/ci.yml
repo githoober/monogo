@@ -24,13 +24,15 @@ jobs:
           cache: true
 
       - name: Verify module dependencies
-        run: go mod verify
+        run: |
+          go mod verify
+          (cd ext && go mod verify)
 
       - name: Run go vet
-        run: go vet ./...
+        run: go vet ./... ./ext/...
 
       - name: Run tests with coverage and race detector
-        run: go test -v -race -count=1 -coverprofile=coverage.out ./...
+        run: go test -v -race -count=1 -coverprofile=coverage.out ./... ./ext/...
 
       - name: Report coverage summary
         run: go tool cover -func=coverage.out
@@ -50,7 +52,7 @@ jobs:
 
       - name: Run deadcode check
         run: |
-          output=$(go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./...)
+          output=$(go run golang.org/x/tools/cmd/deadcode@v0.51.0 -test ./... ./ext/...)
           if [ -n "$output" ]; then
             echo "Unreachable code detected:"
             echo "$output"

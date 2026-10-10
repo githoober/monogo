@@ -23,14 +23,9 @@ var _ monogo.Resettable = (*Buffer)(nil)
 
 // NewBuffer creates a Buffer handler with optional configuration options (defaults: bubble=true).
 func NewBuffer(handler monogo.Handler, bufferLimit int, flushLevel monogo.Level, opts ...Option) *Buffer {
-	o := defaultOptions()
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
+	base, o := newBaseHandler(monogo.DEBUG, opts...)
 	return &Buffer{
-		BaseHandler:        NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler:        base,
 		handler:            handler,
 		bufferLimit:        bufferLimit,
 		flushLevel:         flushLevel,

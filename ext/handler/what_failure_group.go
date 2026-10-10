@@ -43,17 +43,12 @@ var (
 
 // NewWhatFailureGroup creates a WhatFailureGroup handler wrapping the given handlers with optional configuration options.
 func NewWhatFailureGroup(handlers []monogo.Handler, opts ...Option) *WhatFailureGroup {
-	o := defaultOptions()
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
+	base, o := newBaseHandler(monogo.DEBUG, opts...)
 	handlersCopy := make([]monogo.Handler, len(handlers))
 	copy(handlersCopy, handlers)
 
 	return &WhatFailureGroup{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler: base,
 		handlers:    handlersCopy,
 		onError:     o.whatFailureCallback,
 	}
@@ -109,7 +104,7 @@ func (w *WhatFailureGroup) Handle(ctx context.Context, record monogo.Record) err
 // Any errors or panics returned by sub-handlers are suppressed and forwarded to the optional callback.
 // Always returns nil.
 func (w *WhatFailureGroup) HandleBatch(ctx context.Context, records []monogo.Record) error {
-	if len(w.processors) > 0 {
+	if len(w.Processors()) > 0 {
 		processed := make([]monogo.Record, len(records))
 		for i, rec := range records {
 			processed[i] = w.ProcessRecord(rec)

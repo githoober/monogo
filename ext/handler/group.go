@@ -17,8 +17,9 @@ var _ monogo.Resettable = (*Group)(nil)
 
 // NewGroup creates a Group handler with optional configuration options.
 func NewGroup(handlers []monogo.Handler, opts ...Option) *Group {
+	base, _ := newBaseHandler(monogo.DEBUG, opts...)
 	return &Group{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler: base,
 		handlers:    handlers,
 	}
 }
@@ -67,7 +68,7 @@ func (g *Group) Handle(ctx context.Context, record monogo.Record) error {
 // Sub-handlers implementing BatchHandler receive the batch directly;
 // others fall back to handling each handled record individually.
 func (g *Group) HandleBatch(ctx context.Context, records []monogo.Record) error {
-	if len(g.processors) > 0 {
+	if len(g.Processors()) > 0 {
 		processed := make([]monogo.Record, len(records))
 		for i, rec := range records {
 			processed[i] = g.ProcessRecord(rec)

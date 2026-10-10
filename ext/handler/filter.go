@@ -22,8 +22,9 @@ var (
 
 // NewFilter creates a Filter handler for level ranges [minLevel, maxLevel] with optional configuration options.
 func NewFilter(handler monogo.Handler, minLevel, maxLevel monogo.Level, opts ...Option) *Filter {
+	base, _ := newBaseHandler(minLevel, opts...)
 	return &Filter{
-		BaseHandler: NewBaseHandler(minLevel, opts...),
+		BaseHandler: base,
 		handler:     handler,
 		minLevel:    minLevel,
 		maxLevel:    maxLevel,
@@ -32,8 +33,9 @@ func NewFilter(handler monogo.Handler, minLevel, maxLevel monogo.Level, opts ...
 
 // NewFilterFunc creates a Filter handler using custom predicate function with optional configuration options.
 func NewFilterFunc(handler monogo.Handler, predicate func(monogo.Record) bool, opts ...Option) *Filter {
+	base, _ := newBaseHandler(monogo.DEBUG, opts...)
 	return &Filter{
-		BaseHandler: NewBaseHandler(monogo.DEBUG, opts...),
+		BaseHandler: base,
 		handler:     handler,
 		predicate:   predicate,
 	}

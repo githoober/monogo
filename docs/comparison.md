@@ -41,20 +41,23 @@ Monogo preserves the core architecture, data model, and processing pipeline of P
 ### Handlers Modeled After Core Monolog (`Monolog\Handler\*`)
 The handlers below are adapted counterparts modeled after upstream PHP Monolog core classes, tailored to Go's runtime and ecosystem:
 
-| Monogo Handler | PHP Monolog Class | Purpose & Adaptation Details |
-| :--- | :--- | :--- |
-| [`handler.Stream`](../handler/stream.go) | `Monolog\Handler\StreamHandler` | Writes formatted records to any `io.Writer` (console `os.Stdout`/`os.Stderr`, files, network sockets). |
-| [`handler.RotatingFile`](../handler/rotating_file.go) | `Monolog\Handler\RotatingFileHandler` | Adapted counterpart to `RotatingFileHandler`. Whereas Monolog rotates on calendar dates (one file per day), Monogo adapts rotation for long-running Go services by rotating on file size, max age, and backup retention using `lumberjack.v2`. |
-| [`handler.Buffer`](../handler/buffer.go) | `Monolog\Handler\BufferHandler` | Adapted counterpart to `BufferHandler`. Buffers records and flushes on capacity limit, action level, or `Close` (adapting Monolog's request-lifecycle buffering for long-running Go services). |
-| [`handler.FingersCrossed`](../handler/fingers_crossed.go) | `Monolog\Handler\FingersCrossedHandler` | Adapted counterpart to `FingersCrossedHandler`. Buffers low-severity diagnostic records (`DEBUG`, `INFO`) silently until an action level (e.g. `ERROR`) is encountered, then flushes full history. |
-| [`handler.Filter`](../handler/filter.go) | `Monolog\Handler\FilterHandler` | Adapted counterpart to `FilterHandler`. Passes records only if their level falls within an inclusive min/max level range; drops out-of-range records. |
-| [`handler.Group`](../handler/group.go) | `Monolog\Handler\GroupHandler` | Adapted counterpart to `GroupHandler`. Multiplexes log records to a slice of nested child handlers. |
-| [`handler.Null`](../handler/test_null.go) | `Monolog\Handler\NullHandler` | Adapted counterpart to `NullHandler`. Consumes and discards all log records without action (useful for muting logs in tests or specific channels). |
-| [`handler.Test`](../handler/test_null.go) | `Monolog\Handler\TestHandler` | Adapted counterpart to `TestHandler`. Retains records in memory for assertions during unit and integration testing. |
-| [`handler.Deduplication`](../handler/deduplication.go) | `Monolog\Handler\DeduplicationHandler` | Adapted counterpart to `DeduplicationHandler`. Provides sliding time-window duplicate suppression, adapted to use a thread-safe in-memory cache with auto-pruning rather than Monolog's file-based store. |
-| [`handler.WhatFailureGroup`](../handler/what_failure_group.go) | `Monolog\Handler\WhatFailureGroupHandler` | Adapted counterpart to `WhatFailureGroupHandler`. Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics (analogous to catching `Throwable` in PHP). |
-| [`handler.Sampling`](../handler/sampling.go) | `Monolog\Handler\SamplingHandler` | Adapted counterpart to `SamplingHandler`. Downsamples records based on a 1-in-N sampling factor, supporting custom sampler strategies and level thresholds to bypass sampling for critical logs. |
-| [`handler.Socket`](../handler/socket.go) | `Monolog\Handler\SocketHandler` | Adapted counterpart to `SocketHandler`. Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets) with automatic reconnection, timeouts, and `Resettable` lifecycle support. |
+| Monogo Handler | Package & Location | PHP Monolog Class | Purpose & Adaptation Details |
+| :--- | :--- | :--- | :--- |
+| [`handler.Stream`](../handler/stream.go) | `handler` (Core) | `Monolog\Handler\StreamHandler` | Writes formatted records to any `io.Writer` (console `os.Stdout`/`os.Stderr`, files, network sockets). |
+| [`handler.JSONStream`](../handler/json.go) | `handler` (Core) | `Monolog\Handler\StreamHandler` | Dedicated stream handler preconfigured with JSON formatting (`NewJSONStream` / `NewJSON`). |
+| [`handler.RotatingFile`](../handler/rotating_file.go) | `handler` (Core) | `Monolog\Handler\RotatingFileHandler` | Pure standard library size/daily log file rotation with backup retention, max age cleanup, and optional gzip compression. Zero external dependencies. |
+| [`handler.RotatingJSONFile`](../handler/rotating_file.go) | `handler` (Core) | `Monolog\Handler\RotatingFileHandler` | Dedicated rotating file handler preconfigured with JSON formatting (`NewRotatingJSONFile` / `NewJSONRotatingFile`). Pure standard library. |
+| [`handler.FingersCrossed`](../handler/fingers_crossed.go) | `handler` (Core) | `Monolog\Handler\FingersCrossedHandler` | Buffers low-severity diagnostic records (`DEBUG`, `INFO`) silently until an action level (e.g. `ERROR`) is encountered, then flushes full history. |
+| [`handler.Null`](../handler/test_null.go) | `handler` (Core) | `Monolog\Handler\NullHandler` | Consumes and discards all log records without action (useful for muting logs in tests or specific channels). |
+| [`handler.Test`](../handler/test_null.go) | `handler` (Core) | `Monolog\Handler\TestHandler` | Retains records in memory for assertions during unit and integration testing. |
+| [`handler.RotatingFile`](../ext/handler/rotating_file.go) | `ext/handler` | `Monolog\Handler\RotatingFileHandler` | Alternate counterpart to `RotatingFileHandler` powered by `lumberjack.v2`. Provided in `ext/handler` for lumberjack users. |
+| [`handler.Buffer`](../ext/handler/buffer.go) | `ext/handler` | `Monolog\Handler\BufferHandler` | Buffers records and flushes on capacity limit, action level, or `Close`. |
+| [`handler.Filter`](../ext/handler/filter.go) | `ext/handler` | `Monolog\Handler\FilterHandler` | Passes records only if their level falls within an inclusive min/max level range; drops out-of-range records. |
+| [`handler.Group`](../ext/handler/group.go) | `ext/handler` | `Monolog\Handler\GroupHandler` | Multiplexes log records to a slice of nested child handlers. |
+| [`handler.Deduplication`](../ext/handler/deduplication.go) | `ext/handler` | `Monolog\Handler\DeduplicationHandler` | Provides sliding time-window duplicate suppression using a thread-safe in-memory cache with auto-pruning. |
+| [`handler.WhatFailureGroup`](../ext/handler/what_failure_group.go) | `ext/handler` | `Monolog\Handler\WhatFailureGroupHandler` | Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics. |
+| [`handler.Sampling`](../ext/handler/sampling.go) | `ext/handler` | `Monolog\Handler\SamplingHandler` | Downsamples records based on a 1-in-N sampling factor, supporting custom sampler strategies and level thresholds. |
+| [`handler.Socket`](../ext/handler/socket.go) | `ext/handler` | `Monolog\Handler\SocketHandler` | Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets) with automatic reconnection and timeouts. |
 
 ---
 
@@ -69,16 +72,16 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 
 ### Processors Modeled After Core Monolog (`Monolog\Processor\*`)
 
-| Monogo Processor | PHP Monolog Class | Purpose & Adaptation Details |
-| :--- | :--- | :--- |
-| [`processor.Caller`](../processor/processor.go) | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site using Go's `runtime.Caller` instead of PHP's `debug_backtrace()`. |
-| [`processor.Hostname`](../processor/processor.go) | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]` via `os.Hostname()`. |
-| [`processor.Memory`](../processor/processor.go) | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes` from `runtime.MemStats`) instead of PHP's `memory_get_usage()`. |
-| [`processor.UID`](../processor/processor.go) | `Monolog\Processor\UidProcessor` | Injects a unique identifier string into `Extra["uid"]` to trace operations across a lifecycle; regenerates a new UID when `Reset(ctx)` is invoked (implements `monogo.Resettable`). |
-| [`processor.ProcessId`](../processor/processor.go) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. |
-| [`processor.Git`](../processor/processor.go) | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables instead of git CLI execution. |
-| [`processor.Tag`](../processor/processor.go) | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |
-| [`processor.Web`](../processor/web.go) | `Monolog\Processor\WebProcessor` | Injects HTTP request attributes (URL, client IP, method, server, referrer, user agent) into `Record.Extra` from request context or `http.Request`. |
+| Monogo Processor | Package & Location | PHP Monolog Class | Purpose & Adaptation Details |
+| :--- | :--- | :--- | :--- |
+| [`processor.ProcessId`](../processor/process.go) | `processor` (Core) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. Aliased as `processor.Process()`. |
+| [`processor.Web`](../processor/web.go) | `processor` (Core) | `Monolog\Processor\WebProcessor` | Injects HTTP request attributes (URL, client IP, method, server, referrer, user agent) into `Record.Extra` from request context. |
+| [`processor.Caller`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site using Go's `runtime.Caller`. |
+| [`processor.Hostname`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]` via `os.Hostname()`. |
+| [`processor.Memory`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes` from `runtime.MemStats`). |
+| [`processor.UID`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\UidProcessor` | Injects a unique identifier string into `Extra["uid"]`; regenerates a new UID when `Reset(ctx)` is invoked. |
+| [`processor.Git`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\GitProcessor` | Injects Git commit hash, branch, time, and dirty status into `Extra["git"]` via Go build info (`runtime/debug.ReadBuildInfo`) and environment variables. |
+| [`processor.Tag`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\TagProcessor` | Injects arbitrary fixed key-value tags into `Record.Extra`. |
 
 ---
 
@@ -93,7 +96,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
 
 ### 2. `Env` & `EnvMap` Processors
 - **Status:** **New in Monogo** *(Not in PHP Monolog core)*.
-- **What it does:** [`processor.Env(keys...)`](../processor/processor.go) extracts specified environment variables into `Extra["env"]`, while [`processor.EnvMap(mapping)`](../processor/processor.go) maps environment variables directly to top-level keys in `Record.Extra`.
+- **What it does:** [`processor.Env(keys...)`](../processor/env.go) extracts specified environment variables into `Extra["env"]`, while [`processor.EnvMap(mapping)`](../processor/env.go) maps environment variables directly to top-level keys in `Record.Extra`.
 - **Rationale:** In containerized cloud environments (Kubernetes, AWS ECS, GCP Cloud Run), runtime metadata such as `POD_NAME`, `NAMESPACE`, `CLUSTER`, or `DEPLOY_ENV` is injected via environment variables. Providing built-in environment processors enables zero-boilerplate injection of container metadata.
 
 ### 3. First-Class `context.Context` Architecture
@@ -103,14 +106,17 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
   - Ambient contextual fields can be attached to Go contexts via `monogo.WithContext(ctx, fields)` or `monogo.WithField(ctx, key, value)` and are automatically extracted and merged into log records across goroutines.
   - Unlike common anti-patterns, `context.Context` is **not stored inside the `Record` struct**. `Record` remains a clean, serializable data carrier, while `ctx` travels explicitly through function parameters.
 
-### 4. Zero External Dependencies in Core & Pluggable Backend Adapters
+### 4. Zero External Dependencies in Core & Modular Extension Module (`ext`)
 - **Status:** **New in Monogo** *(Dependency isolation)*.
 - **What it does:**
-  - The root `monogo` package relies exclusively on the Go standard library.
-  - Framework-specific integrations live in isolated subpackages:
-    - `adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
-    - `adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
-    - `adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
+  - The root `monogo` package relies exclusively on the Go standard library (zero external dependencies).
+  - Extended handlers and ecosystem integrations live in the `github.com/githoober/monogo/ext` module:
+    - `ext/adapter/slogadapter.NewSlogHandler`: Routes Monogo log records to any standard library `slog.Handler`.
+    - `ext/adapter/slogadapter.NewMonogoSlogBridge`: Implements `slog.Handler`, allowing standard library `log/slog` calls to be routed through the Monogo processing pipeline.
+    - `ext/adapter/stdlogadapter`: Provides `NewWriter` (`io.Writer`) and `NewStdLogger` (`*log.Logger`), enabling standard library HTTP servers and third-party tools to pipe logs into Monogo.
+    - `ext/handler`: Extended handlers (`RotatingFile` via `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, etc.).
+    - `ext/processor`: Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`).
+    - `ext/middleware`: HTTP server middleware.
   - Consumers importing core Monogo pull in zero unwanted third-party dependencies.
 
 ### 5. Concurrent Goroutine Safety & Copy-On-Write Isolation
@@ -148,7 +154,7 @@ While Monogo mirrors Monolog's architecture, Go's runtime characteristics (gorou
 ### 10. Native `net/http` Middleware
 - **Status:** **New in Monogo** *(Go web ecosystem standard)*.
 - **What it does:**
-  - `middleware.HTTP(logger)` provides a standard `func(http.Handler) http.Handler` middleware that assigns/preserves `X-Request-ID`, binds ambient request metadata via `processor.WithHTTPRequest`, records response status codes and bytes written, measures duration, and logs completed requests.
+  - `ext/middleware.HTTP(logger)` (`../ext/middleware/http.go`) provides a standard `func(http.Handler) http.Handler` middleware that assigns/preserves `X-Request-ID`, binds ambient request metadata via `processor.WithHTTPRequest`, records response status codes and bytes written, measures duration, and logs completed requests.
 
 ---
 

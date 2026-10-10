@@ -2,8 +2,6 @@ package handler
 
 import (
 	"context"
-	"net"
-	"time"
 
 	"github.com/githoober/monogo"
 )
@@ -20,29 +18,21 @@ type BaseHandler struct {
 var _ monogo.Resettable = (*BaseHandler)(nil)
 
 type options struct {
-	bubble              bool
-	formatter           monogo.Formatter
-	processors          []monogo.Processor
-	maxSizeMB           int
-	maxBackups          int
-	maxAgeDays          int
-	compress            bool
-	dedupKeyFunc        func(monogo.Record) string
-	dedupStore          DeduplicationStore
-	whatFailureCallback func(error, monogo.Handler)
-	resetErrorCallback  func(error)
-	sampler             func() bool
-	samplingThreshold   *monogo.Level
-	dialTimeout         time.Duration
-	writeTimeout        time.Duration
-	dialer              func(context.Context, string, string) (net.Conn, error)
+	bubble     bool
+	formatter  monogo.Formatter
+	processors []monogo.Processor
+	maxSize    int64
+	maxBackups int
+	maxAgeDays int
+	compress   bool
+	daily      bool
 }
 
 func defaultOptions() options {
 	return options{
 		bubble:     true,
-		maxSizeMB:  100,
-		maxBackups: 3,
+		maxSize:    10 * 1024 * 1024, // 10MB default
+		maxBackups: 5,
 	}
 }
 
@@ -79,45 +69,50 @@ func WithProcessors(processors ...monogo.Processor) Option {
 	return WithProcessor(processors...)
 }
 
-// WithResetErrorCallback registers a callback invoked if an error occurs during Reset() (e.g. flushing a buffer).
-func WithResetErrorCallback(fn func(error)) Option {
+// WithMaxSize sets the maximum file size in bytes before rotating (default: 10MB).
+func WithMaxSize(maxBytes int64) Option {
 	return func(o *options) {
-		o.resetErrorCallback = fn
+		o.maxSize = maxBytes
 	}
 }
 
-// WithSampler configures a custom sampling function (returns true if record should be emitted).
-func WithSampler(sampler func() bool) Option {
+// WithMaxSizeMB sets the maximum file size in megabytes before rotating.
+func WithMaxSizeMB(maxMB int) Option {
 	return func(o *options) {
-		o.sampler = sampler
+		o.maxSize = int64(maxMB) * 1024 * 1024
 	}
 }
 
-// WithSamplingThreshold sets a level at or above which records bypass sampling and are always emitted.
-func WithSamplingThreshold(level monogo.Level) Option {
+// WithMaxBackups sets the maximum number of backup files to retain (default: 5).
+func WithMaxBackups(maxBackups int) Option {
 	return func(o *options) {
-		o.samplingThreshold = &level
+		o.maxBackups = maxBackups
 	}
 }
 
-// WithDialTimeout configures connection dial timeout for network handlers.
-func WithDialTimeout(d time.Duration) Option {
+// WithMaxAgeDays sets the maximum age in days before old backup files are removed.
+func WithMaxAgeDays(maxAgeDays int) Option {
 	return func(o *options) {
-		o.dialTimeout = d
+		o.maxAgeDays = maxAgeDays
 	}
 }
 
-// WithWriteTimeout configures network write timeout for network handlers.
-func WithWriteTimeout(d time.Duration) Option {
+// WithMaxAge is an alias for WithMaxAgeDays.
+func WithMaxAge(maxAgeDays int) Option {
+	return WithMaxAgeDays(maxAgeDays)
+}
+
+// WithCompress sets whether rotated backup files should be compressed with gzip.
+func WithCompress(compress bool) Option {
 	return func(o *options) {
-		o.writeTimeout = d
+		o.compress = compress
 	}
 }
 
-// WithDialer configures a custom connection dialer for network handlers.
-func WithDialer(fn func(ctx context.Context, network, address string) (net.Conn, error)) Option {
+// WithDailyRotation sets whether log files should rotate daily when the calendar date changes.
+func WithDailyRotation(daily bool) Option {
 	return func(o *options) {
-		o.dialer = fn
+		o.daily = daily
 	}
 }
 
