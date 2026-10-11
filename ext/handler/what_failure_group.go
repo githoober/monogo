@@ -164,8 +164,7 @@ func safeIsHandling(h monogo.Handler, onError WhatFailureCallback, ctx context.C
 	return handled
 }
 
-func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) error {
-	var err error
+func invokeSafe(h monogo.Handler, onError WhatFailureCallback, fn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if e, ok := r.(error); ok {

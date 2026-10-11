@@ -10,10 +10,10 @@ The repository is split into two decoupled Go modules:
    - Strictly backend-agnostic with **100% zero third-party dependencies** (relies entirely on Go standard library).
    - Defines core interfaces (`Handler`, `BatchHandler`, `Bubbler`, `ProcessableHandler`, `Resettable`, `Processor`, `ProcessorFunc`, `Formatter`, `BatchFormatter`) and data structures (`Record`, `Level`).
    - Contains core handlers (`Stream`, dedicated `JSONStream` via `handler.NewJSONStream` / `handler.NewJSON`, pure stdlib `RotatingFile`, `RotatingJSONFile`, `FingersCrossed`, `Test`, `Null`).
-   - Contains core formatters (`Line`, `JSON`, `Logfmt`).
-   - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor, `Env` / `EnvMap` environment variable extractor).
+   - Contains core formatters (`Line`, `JSON`, `Logfmt`, `Logstash`, `Syslog`).
+   - Contains core processors (`ProcessId` / `Process`, `Web` HTTP metadata extractor, `Env` / `EnvMap` environment variable extractor, `LoadAverage` system load averages).
 2. **Extension Module (`github.com/githoober/monogo/ext`)**:
-   - Advanced handlers (`RotatingFile` powered by `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, `Filter`, `Group`, `WhatFailureGroup`).
+   - Advanced handlers (`RotatingFile` powered by `lumberjack.v2`, `Buffer`, `Deduplication`, `Sampling`, `Socket`, `SyslogUdp`, `Filter`, `Group`, `WhatFailureGroup`, `FallbackGroup`).
    - Extended diagnostic processors (`Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`).
    - HTTP middleware (`net/http` request logging, latency tracking, `X-Request-ID`).
    - Pluggable standard library adapters (`ext/adapter/slogadapter`, `ext/adapter/stdlogadapter`).
@@ -87,6 +87,8 @@ Log records flow through the classic Monolog pipeline (IsHandling -> Processors 
 - **`RotatingFile`**: Leverages `lumberjack.v2` for size/age/compression-based rolling log file rotation.
 - **`Deduplication`**: Suppresses identical log records that occur within a configurable time window (e.g. 60s) to prevent log flooding during outages.
 - **`WhatFailureGroup`**: Wraps a group of handlers and swallows any errors or panics returned by individual handlers during `Handle`, `HandleBatch`, or `Close`, preventing secondary sink failures from breaking primary logging.
+- **`FallbackGroup`**: Dispatches to child handlers sequentially and stops at the first successful handler, providing seamless priority failover with panic suppression and callback telemetry.
+- **`SyslogUdp`**: Streams RFC 5424 formatted syslog lines over UDP to remote syslog daemons.
 - **`Filter`**, **`Group`**, **`Buffer`**, **`Sampling`**, **`Socket`**.
 
 Handlers support propagation control (bubbling) configured at construction time via options (`handler.WithBubble(...)`) and the `monogo.Bubbler` interface. If a handler processes a record and its `Bubble()` returns `false`, record propagation halts, preventing subsequent handlers down the stack from receiving it.
@@ -97,10 +99,10 @@ Handlers and formatters also implement batch operations (`HandleBatch`, `FormatB
 
 For flood control, `Deduplication` acts as a decorator handler. Unlike PHP Monolog which relies on disk files to share deduplication state between ephemeral PHP processes, Monogo utilizes a high-performance, thread-safe in-memory cache with zero-goroutine periodic auto-pruning to eliminate memory leaks in 24/7 long-running services, while supporting custom `DeduplicationStore` backends (e.g. distributed caches).
 
-For error isolation across multiple handlers, `WhatFailureGroup` guarantees that unreliable sinks (remote syslog, webhooks, Slack, Elasticsearch) can fail or panic without disrupting healthy handlers or crashing application requests.
+For error isolation across multiple handlers, `WhatFailureGroup` guarantees that unreliable sinks (remote syslog, webhooks, Slack, Elasticsearch) can fail or panic without disrupting healthy handlers or crashing application requests. Similarly, `FallbackGroup` provides automated failover across primary and backup sinks (e.g. remote network sink falling back to local disk).
 
 ### Rationale
-Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, error-triggered flushes, duplicate suppression, or resilient failure swallowing. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically. Deduplication protects logging, alerting, and notification sinks from flood exhaustion during cascading failures, retry loops, or outages. WhatFailureGroup ensures secondary and external logging sinks do not create single points of failure in applications.
+Providing high-utility Monolog handlers allows developers to easily construct production-grade logging setups with rolling files, buffering, error-triggered flushes, duplicate suppression, or resilient failure swallowing. Bubbling control allows dedicated handlers (such as alert/error handlers) to absorb specific logs without cluttering general output handlers. Per-handler processors allow customizing records for specific destinations without polluting other log targets. First-class batching ensures buffering handlers flush efficiently and atomically. Deduplication protects logging, alerting, and notification sinks from flood exhaustion during cascading failures, retry loops, or outages. WhatFailureGroup and FallbackGroup ensure secondary and external logging sinks do not create single points of failure in applications.
 
 ---
 
@@ -112,7 +114,7 @@ Monogo implements a two-tier processor architecture:
 2. **Per-Handler Processors (`handler.WithProcessor(p...)`)**: Configured at construction time on individual handlers. Handlers implement `monogo.ProcessableHandler` via `handler.BaseHandler`.
 
 Available processors:
-- **Core (`github.com/githoober/monogo/processor`)**: `ProcessId` (`Process`), `Web` (HTTP metadata extraction), `Env` / `EnvMap`.
+- **Core (`github.com/githoober/monogo/processor`)**: `ProcessId` (`Process`), `Web` (HTTP metadata extraction), `Env` / `EnvMap`, `LoadAverage`.
 - **Extension (`github.com/githoober/monogo/ext/processor`)**: `Caller`, `Hostname`, `Memory`, `UID`, `Git`, `Tag`.
 
 When a handler executes its processor pipeline via `ProcessRecord`:

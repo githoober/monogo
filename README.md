@@ -16,13 +16,13 @@ Monogo is organized into a lightweight **Core module** with **zero third-party d
   - **Generic Logging Engine**: Backend-agnostic `Handler`, `Processor`, and `Formatter` interfaces.
   - **Ambient Context Values**: Attach contextual fields to Go's `context.Context` via `monogo.WithContext` / `monogo.WithField`.
   - **RFC 5424 Log Levels & Channels**: 8 standard severity levels (`DEBUG` through `EMERGENCY`) and first-class channel segregation.
-  - **Core Handlers**: `Stream`, dedicated `JSONStream` (`NewJSONStream` / `NewJSON`), `FingersCrossed`, `Test`, and `Null`.
-  - **Core Processors**: `ProcessId` (`Process`), `Web` (HTTP request metadata extraction), `Env` / `EnvMap` (environment variable extraction).
-  - **Core Formatters**: `Line`, `JSON` (NDJSON & JSON Array batch modes), `Logfmt` (canonical key=value format).
+  - **Core Handlers**: `Stream`, dedicated `JSONStream` (`NewJSONStream` / `NewJSON`), pure stdlib `RotatingFile` (`RotatingJSONFile`), `FingersCrossed`, `Test`, and `Null`.
+  - **Core Processors**: `ProcessId` (`Process`), `Web` (HTTP request metadata extraction), `Env` / `EnvMap` (environment variable extraction), `LoadAverage` (system load average metrics).
+  - **Core Formatters**: `Line`, `JSON` (NDJSON & JSON Array batch modes), `Logfmt` (canonical key=value format), `Logstash` (Logstash Event V1 JSON), `Syslog` (RFC 5424).
   - **Batching & Bubbling**: First-class `BatchHandler`, `BatchFormatter`, `Bubbler`, and `Resettable` lifecycle contracts.
 
 - **Extension Module (`github.com/githoober/monogo/ext`)**:
-  - **Advanced Handlers (`ext/handler`)**: `RotatingFile` (rolling log file rotation via `lumberjack.v2`), `Buffer`, `Deduplication`, `Sampling`, `Socket` (TCP/UDP/Unix), `Filter`, `Group`, `WhatFailureGroup`.
+  - **Advanced Handlers (`ext/handler`)**: `RotatingFile` (rolling log file rotation via `lumberjack.v2`), `Buffer`, `Deduplication`, `Sampling`, `Socket` (TCP/UDP/Unix), `SyslogUdp` (remote syslog over UDP), `Filter`, `Group`, `WhatFailureGroup`, `FallbackGroup` (priority failover).
   - **Enriched Processors (`ext/processor`)**: `Caller` (introspection), `Hostname`, `Memory` (runtime stats), `UID` (request IDs), `Git` (build metadata), `Tag`.
   - **HTTP Middleware (`ext/middleware`)**: Standard `net/http` middleware with `X-Request-ID` generation, latency tracking, and request logging.
   - **Standard Library Adapters (`ext/adapter`)**:
@@ -267,6 +267,39 @@ logger := monogo.New("app", []monogo.Handler{primaryHandler, resilientGroup}, ni
 logger.Error(ctx, "Payment transaction failed")
 ```
 
+## FallbackGroup Handler (`ext/handler`)
+
+Modeled after PHP Monolog's `FallbackGroupHandler`, the `FallbackGroup` handler provides high-availability priority failover across a list of child handlers. It attempts to dispatch records to handlers in sequential order, immediately stopping as soon as one handler successfully processes the record. If a child handler fails with an error or panics, `FallbackGroup` catches it, invokes an optional notification callback (`exthandler.WithFallbackCallback`), and seamlessly falls back to the next handler in priority order. If all handlers fail, it returns an aggregated multi-error.
+
+```go
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
+	"github.com/githoober/monogo/handler"
+)
+
+ctx := context.Background()
+
+// Fallback chain: Primary remote TCP -> Secondary remote UDP -> Local backup file
+fallbackHandler := exthandler.NewFallbackGroup(
+	[]monogo.Handler{
+		remoteTcpHandler,
+		remoteUdpHandler,
+		handler.NewStream(os.Stderr, monogo.DEBUG),
+	},
+	exthandler.WithFallbackCallback(func(err error, failedHandler monogo.Handler) {
+		metrics.Increment("logger.failover_triggered")
+	}),
+)
+defer fallbackHandler.Close(ctx)
+
+logger := monogo.New("app", []monogo.Handler{fallbackHandler}, nil)
+logger.Info(ctx, "Dispatched with automatic priority failover")
+```
+
 ## Sampling Handler (`ext/handler`)
 
 Inspired by PHP Monolog's `SamplingHandler`, the `Sampling` handler downsamples high-throughput log traffic based on a 1-in-N sampling factor (e.g., factor `10` emits approximately 10% of records). To prevent losing critical operational errors, `exthandler.WithSamplingThreshold` allows logs at or above a specified severity level (e.g. `ERROR`) to completely bypass sampling:
@@ -327,6 +360,38 @@ defer socketHandler.Close(ctx)
 
 logger := monogo.New("network-app", []monogo.Handler{socketHandler}, nil)
 logger.Info(ctx, "Log streaming over TCP socket")
+```
+
+## SyslogUdp Handler (`ext/handler`)
+
+Modeled after PHP Monolog's `SyslogUdpHandler`, the `SyslogUdp` handler streams log entries to a remote Syslog daemon over a connectionless UDP socket. It automatically preconfigures the standard RFC 5424 `Syslog` formatter (`formatter.NewSyslog(appName)`), while allowing custom formatters, facility codes, and bubbling configurations:
+
+```go
+import (
+	"context"
+
+	"github.com/githoober/monogo"
+	exthandler "github.com/githoober/monogo/ext/handler"
+	"github.com/githoober/monogo/formatter"
+)
+
+ctx := context.Background()
+
+// Stream logs to remote syslog daemon over UDP at 10.0.0.1:514 (Local0 facility)
+syslogHandler, err := exthandler.NewSyslogUdp(
+	"10.0.0.1",
+	514,
+	monogo.INFO,
+	exthandler.WithSyslogUdpAppName("payment-gateway"),
+	exthandler.WithSyslogUdpFacility(formatter.FacilityLocal0),
+)
+if err != nil {
+	panic(err)
+}
+defer syslogHandler.Close(ctx)
+
+logger := monogo.New("payments", []monogo.Handler{syslogHandler}, nil)
+logger.Error(ctx, "Transaction processor timed out", map[string]interface{}{"tx_id": 99182})
 ```
 
 ## Handler Bubbling
@@ -394,6 +459,7 @@ Zero external dependencies, always available in core:
 - **`processor.Web(opts...)`**: Injects HTTP request metadata (URL, client IP, method, server, referrer, user agent) into `Extra` from context (Monolog `WebProcessor`). Use `processor.WithHTTPRequest(ctx, req)` to attach the HTTP request to the context.
 - **`processor.Env(keys...)`**: Extracts specified environment variables into `Extra["env"]` (convenience extension for containerized/cloud deployments).
 - **`processor.EnvMap(mapping)`**: Maps environment variables directly to custom top-level keys in `Record.Extra`.
+- **`processor.LoadAverage(mode...)`**: Injects system load averages (1m, 5m, 15m, or all) into `Extra["load_average"]` (Monolog `LoadAverageProcessor`, pure standard library). Modes: `LoadAvgAll` (default), `LoadAvg1Min`, `LoadAvg5Min`, `LoadAvg15Min`.
 
 ### Extension Processors (`github.com/githoober/monogo/ext/processor`)
 
@@ -576,6 +642,73 @@ func main() {
 	logger.Info(ctx, "User logged in", map[string]interface{}{"user_id": 42, "ip": "192.168.1.1"})
 	// Output:
 	// ts=2026-10-04T12:00:00Z lvl=INFO channel=app msg="User logged in" ip=192.168.1.1 user_id=42
+}
+```
+
+## Logstash Formatter (Core)
+
+Modeled after PHP Monolog's `LogstashFormatter`, the `Logstash` formatter (`formatter.NewLogstash`) produces Logstash Event V1 JSON (`@timestamp`, `@version`, `host`, `message`, `channel`, `level`). It supports single records and batch NDJSON output with zero external dependencies:
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/formatter"
+	"github.com/githoober/monogo/handler"
+)
+
+func main() {
+	ctx := context.Background()
+
+	logstashHandler := handler.NewStream(
+		os.Stdout,
+		monogo.DEBUG,
+		handler.WithFormatter(formatter.NewLogstash("order-api",
+			formatter.WithLogstashSystemName("k8s-pod-node-1"),
+			formatter.WithLogstashContextKey("context"),
+			formatter.WithLogstashExtraKey("extra"),
+		)),
+	)
+
+	logger := monogo.New("orders", []monogo.Handler{logstashHandler}, nil)
+	logger.Info(ctx, "Payment processed", map[string]interface{}{"order_id": 4129})
+}
+```
+
+## Syslog Formatter (Core)
+
+Modeled after PHP Monolog's `SyslogFormatter`, the `Syslog` formatter (`formatter.NewSyslog`) serializes log entries into standard RFC 5424 syslog packets (`<PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG`):
+
+```go
+package main
+
+import (
+	"context"
+	"os"
+
+	"github.com/githoober/monogo"
+	"github.com/githoober/monogo/formatter"
+	"github.com/githoober/monogo/handler"
+)
+
+func main() {
+	ctx := context.Background()
+
+	syslogHandler := handler.NewStream(
+		os.Stdout,
+		monogo.INFO,
+		handler.WithFormatter(formatter.NewSyslog("auth-service",
+			formatter.WithSyslogFacility(formatter.FacilityAuth),
+			formatter.WithSyslogHostname("auth-node-1.internal"),
+		)),
+	)
+
+	logger := monogo.New("auth", []monogo.Handler{syslogHandler}, nil)
+	logger.Warning(ctx, "Failed login attempt", map[string]interface{}{"user": "root"})
 }
 ```
 

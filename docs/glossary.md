@@ -33,8 +33,10 @@ A destination component responsible for receiving a `Record` and outputting or f
   - `WhatFailureGroup`: Multiplexes records to multiple handlers while suppressing all errors and panics.
   - `Sampling`: Downsamples log records based on a 1-in-N factor with optional bypass threshold.
   - `Socket`: Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets).
+  - `SyslogUdp`: Streams formatted RFC 5424 log entries to remote Syslog servers over UDP sockets.
   - `Filter`: Filters records within a level range.
   - `Group`: Multiplexes records to multiple handlers.
+  - `FallbackGroup`: Priority failover across child handlers stopping at first success.
 
 ### Processor
 A function or component that enriches `Record.Extra` with additional system metadata before formatting and handling.
@@ -42,6 +44,7 @@ A function or component that enriches `Record.Extra` with additional system meta
   - `ProcessId`: OS process ID (`os.Getpid()`, Monolog `ProcessIdProcessor`, aliased as `processor.Process()`).
   - `Web`: HTTP request attributes (url, client IP, method, server, referrer, user agent; Monolog `WebProcessor`).
   - `Env` / `EnvMap`: Environment variables (convenience extension for containerized/cloud environments).
+  - `LoadAverage`: System load averages (1m, 5m, 15m, or all; Monolog `LoadAverageProcessor`).
 - **Extension Processors (`github.com/githoober/monogo/ext/processor`)**:
   - `Caller`: File, line, and function caller info (Monolog `IntrospectionProcessor`).
   - `Hostname`: OS hostname (Monolog `HostnameProcessor`).
@@ -54,6 +57,8 @@ A function or component that enriches `Record.Extra` with additional system meta
 Transforms a `Record` into a byte slice or string format for output. Examples:
 - `Line`: Customizable text line template (Monolog `LineFormatter`).
 - `JSON`: JSON payload formatter (Monolog `JsonFormatter`).
+- `Logstash`: Logstash Event V1 JSON formatter (Monolog `LogstashFormatter`).
+- `Syslog`: RFC 5424 syslog line formatter (Monolog `SyslogFormatter`).
 - `Logfmt`: Canonical key=value logfmt formatter with configurable field names, prefixes, and safe quoting (Monogo extension for Go cloud ecosystems like Loki and Promtail).
 
 ### Ambient Context
@@ -81,5 +86,20 @@ A structured formatter (`formatter.Logfmt`) that serializes log records into sta
 
 ### Resettable Interface
 Defined by `monogo.Resettable` (`Reset(ctx context.Context) error`). Implemented by loggers, handlers, and processors that maintain internal state across log cycles (such as buffering queues, deduplication window stores, and request UIDs). Calling `logger.Reset(ctx)` establishes a concurrency barrier (waiting for in-flight log writes to finish), ends a log cycle, cascades context-aware resets down through all handlers, per-handler processors, and logger processors, and propagates any reset or flush errors back to the caller. This restores the logging stack to a clean state ready to receive subsequent logs without leaking data between jobs or requests. Essential for long-running Go processes (worker pools, HTTP request lifecycles, and test suites).
+
+### FallbackGroup Handler
+A priority failover handler (`handler.FallbackGroup` in `ext/handler`) that attempts to dispatch log records to a slice of child handlers in sequential order. Propagation immediately stops as soon as one handler successfully processes the record. If an individual child handler fails or panics, the failure is caught, an optional callback (`handler.WithFallbackCallback`) is invoked for telemetry, and the handler seamlessly falls back to the next child handler in the chain. If all handlers fail, an aggregated multi-error is returned.
+
+### SyslogUdp Handler
+A network handler (`handler.SyslogUdp` in `ext/handler`) that streams log entries over a UDP socket to a remote Syslog daemon. Defaults to the RFC 5424 `Syslog` formatter (`formatter.NewSyslog(appName)`), while allowing custom formatters, facility codes, and bubbling configurations.
+
+### Logstash Formatter
+A JSON formatter (`formatter.Logstash` in `formatter`) that transforms log records into Logstash Event V1 JSON format (`@timestamp`, `@version`, `host`, `message`, `channel`, `level`). Supports single and batch NDJSON output modes with zero external dependencies.
+
+### Syslog Formatter
+An RFC 5424 syslog formatter (`formatter.Syslog` in `formatter`) that encodes log records into standard syslog lines (`<PRI>VERSION TIMESTAMP HOSTNAME APP-NAME PROCID MSGID STRUCTURED-DATA MSG`) with facility calculation and severity mappings.
+
+### LoadAverage Processor
+A system processor (`processor.LoadAverage` in `processor`) that samples operating system load averages (1-minute, 5-minute, 15-minute, or all) and injects them into `Record.Extra["load_average"]` using Go standard library facilities.
 
 

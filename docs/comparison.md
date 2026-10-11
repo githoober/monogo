@@ -58,6 +58,8 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | [`handler.WhatFailureGroup`](../ext/handler/what_failure_group.go) | `ext/handler` | `Monolog\Handler\WhatFailureGroupHandler` | Multiplexes records to child handlers while safely swallowing and suppressing all errors and recovered panics. |
 | [`handler.Sampling`](../ext/handler/sampling.go) | `ext/handler` | `Monolog\Handler\SamplingHandler` | Downsamples records based on a 1-in-N sampling factor, supporting custom sampler strategies and level thresholds. |
 | [`handler.Socket`](../ext/handler/socket.go) | `ext/handler` | `Monolog\Handler\SocketHandler` | Streams formatted log records over network sockets (TCP, UDP, Unix domain sockets) with automatic reconnection and timeouts. |
+| [`handler.FallbackGroup`](../ext/handler/fallback_group.go) | `ext/handler` | `Monolog\Handler\FallbackGroupHandler` | Dispatches records through a priority list of child handlers, stopping on the first successful handler and failing over upon errors/panics. |
+| [`handler.SyslogUdp`](../ext/handler/syslog_udp.go) | `ext/handler` | `Monolog\Handler\SyslogUdpHandler` | Streams formatted RFC 5424 log entries to remote Syslog servers over UDP sockets. |
 
 ---
 
@@ -67,6 +69,8 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | :--- | :--- | :--- |
 | [`formatter.Line`](../formatter/line.go) | `Monolog\Formatter\LineFormatter` | Formats records into customizable text lines with timestamp, channel, level, message, and serialized context/extra. |
 | [`formatter.JSON`](../formatter/json.go) | `Monolog\Formatter\JsonFormatter` | Formats records into structured JSON payloads suitable for log shippers and ingestion systems. |
+| [`formatter.Logstash`](../formatter/logstash.go) | `Monolog\Formatter\LogstashFormatter` | Serializes records into Logstash Event V1 JSON format with `@timestamp`, `@version`, system name, and configurable keys. |
+| [`formatter.Syslog`](../formatter/syslog.go) | `Monolog\Formatter\SyslogFormatter` | Formats records into standard RFC 5424 syslog packets (`<PRI>1 ...`) with facility, severity, and host headers. |
 
 ---
 
@@ -76,6 +80,7 @@ The handlers below are adapted counterparts modeled after upstream PHP Monolog c
 | :--- | :--- | :--- | :--- |
 | [`processor.ProcessId`](../processor/process.go) | `processor` (Core) | `Monolog\Processor\ProcessIdProcessor` | Injects the current operating system process ID (`os.Getpid()`) into `Extra["pid"]`. Aliased as `processor.Process()`. |
 | [`processor.Web`](../processor/web.go) | `processor` (Core) | `Monolog\Processor\WebProcessor` | Injects HTTP request attributes (URL, client IP, method, server, referrer, user agent) into `Record.Extra` from request context. |
+| [`processor.LoadAverage`](../processor/load_average.go) | `processor` (Core) | `Monolog\Processor\LoadAverageProcessor` | Injects system load average metrics (1m, 5m, 15m, or all) into `Record.Extra["load_average"]`. |
 | [`processor.Caller`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\IntrospectionProcessor` | Extracts source file, line number, and function name of the log call site using Go's `runtime.Caller`. |
 | [`processor.Hostname`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\HostnameProcessor` | Injects the machine hostname into `Extra["hostname"]` via `os.Hostname()`. |
 | [`processor.Memory`](../ext/processor/processor.go) | `ext/processor` | `Monolog\Processor\MemoryUsageProcessor` / `MemoryPeakUsageProcessor` | Injects Go runtime memory statistics (`alloc_bytes`, `total_alloc_bytes`, `sys_bytes` from `runtime.MemStats`). |
